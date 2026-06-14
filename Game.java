@@ -1,516 +1,678 @@
-/**
- * Game Class - Primary game logic for a Java-based Processing Game
- * @author Joel A Bianchi
- * @version 5/19/26
- * Revised structure to accomodate Docker webapp development
- */
-
-//import processing.sound.*;
-import java.io.InputStream;
-
 import processing.core.PApplet;
-import processing.core.PConstants;
-import processing.core.PFont;
 import processing.core.PImage;
-import processing.data.JSONObject;
+import java.util.ArrayList;
 
+public class Game extends PApplet {
 
-public class Game extends PApplet{
-
-  //------------------ GAME VARIABLES --------------------//
-
-  // VARIABLES: Processing variable to do Processing things
-  PApplet p;
   public static final int APP_WIDTH = 800;
   public static final int APP_HEIGHT = 600;
 
-  // VARIABLES: Title Bar
-  String titleText = "PEANUT CHESS SKY HORSE 2";
-  String extraText = "CurrentLevel?";
-  String name = "Undefined";
+  PApplet p;
 
-  // VARIABLES: Whole Game
-  AnimatedSprite runningHorse;
-  boolean doAnimation;
+  // Grid dimensions
+  static final int ROWS = 8;
+  static final int COLS = 8;
 
-  // VARIABLES: splashScreen
-  Screen splashScreen;
-  String splashBgFile = "images/apcsa.png";
-  //SoundFile song;
+  ArrayList<GridLocation> path;
+  ArrayList<Enemy> enemies;
+  ArrayList<Tower> towers;
+  ArrayList<Projectile> projectiles;
 
-  // VARIABLES: grid1 Screen (pieces on a grid pattern)
-  Grid grid1;
-  String grid1BgFile = "images/chess.jpg";
-  PImage piece1;   // Use PImage to display the image in a GridLocation
-  String piece1File = "images/x_wood.png";
-  int piece1Row = 3;
-  int piece1Col = 0;
-  AnimatedSprite chick;
-  String chickFile = "sprites/chick_walk.png";
-  String chickJson = "sprites/chick_walk.json";
-  int chickRow = 0;
-  int chickCol = 2;
-  int health = 3;
-  Button b1;
+  ArrayList<Wave> waves;
+  int currentWave = 0;
 
-  // VARIABLES: skyWorld Screen (characters move by pixels)
-  World skyWorld;
-  String skyWorldBgFile = "images/sky.png";
-  Sprite zapdos; //Use Sprite for a pixel-based Location
-  String zapdosFile = "images/zapdos.png";
-  int zapdosStartX = 50;
-  int zapdosStartY = 300;
+  int money = 100;
+  int lives = 20;
+  int towerCost = 75;
 
-  //VARIABLES: brickWorld Screen (characters jump on platforms with gravity)
-  World brickWorld;
-  String brickWorldBgFile = "images/wall.jpg";
-  Platform plat;
+  int frameCounter = 0;
 
-  // VARIABLES: endScreen
-  World endScreen;
-  String endBgFile = "images/youwin.png";
+  boolean gameOver = false;
+  boolean gameWon = false;
 
+  // Tower placement preview
+  boolean showPreview = false;
+  int previewRow = -1;
+  int previewCol = -1;
+  boolean previewValid = false;
 
-  // VARIABLES: Tracking the current Screen being displayed
-  Screen currentScreen;
-  CycleTimer slowCycleTimer;
+  // Colors
+  int grassColor;
+  int grassAltColor;
+  int pathColor;
+  int towerColor;
+  int enemyColor;
+  int gridOutlineColor;
+  int previewValidColor;
+  int previewInvalidColor;
+  int hudBgColor;
 
-  boolean start = true;
+  int tileW;
+  int tileH;
 
+  // ---------------- SETUP ---------------- //
 
-  //------------------ REQUIRED PROCESSING METHODS --------------------//
-
-  // Processing method that runs once for screen resolution settings
   public void settings() {
-    //SETUP: Match the screen size to the background image size
-    size(APP_WIDTH, APP_HEIGHT, JAVA2D);  //request app size from Processing here
-    // Allows p variable to be used by other classes to access PApplet methods
+    size(APP_WIDTH, APP_HEIGHT, JAVA2D);
     p = this;
-    
   }
 
-
-  // Required Processing method that gets run once
-  // Place to put constructors, references, settings
   public void setup() {
-
-    //SETUP: Set the title on the title bar
-    if (surface != null) {
-      surface.setTitle("Peanut Chess Sky Horse 2"); 
-    }
-    p.imageMode(PConstants.CORNER);    //Set Images to read coordinates at corners
-    this.width = APP_WIDTH;
-    this.height = APP_HEIGHT;
-    p.pixelWidth = APP_WIDTH;
-    p.pixelHeight = APP_HEIGHT;
-
-    
-    //SETUP: Construct Game objects used in All Screens
-    runningHorse = new AnimatedSprite(p, "sprites/horse_run.png", "sprites/horse_run.json", 50.0f, 75.0f, 1.0f);
-
-    //SETUP: Construct Splash Screen + objects
-    splashScreen = new Screen(p, "splash", splashBgFile);
-
-    //SETUP: Construct grid1 Screen + objects
-    grid1 = new Grid(p, "chessBoard", grid1BgFile, 6, 8);
-    chick = new AnimatedSprite(p, chickFile, chickJson, 0.0f, 0.0f, 0.5f);
-    b1 = new Button(p, "rect", 625, 525, 150, 50, "GoTo Level 2");
-    // b1.setFontStyle("fonts/spidermanFont.ttf");
-    b1.setFontStyle("Calibri");
-    b1.setTextColor(PColor.WHITE);
-    b1.setButtonColor(PColor.BLACK);
-    b1.setHoverColor(PColor.get(100,50,200));
-    b1.setOutlineColor(PColor.WHITE);
-    String[][] tileMarks = {
-      {"R","N","B","Q","K","B","N","R"},
-      {"P","P","P","P","P","P","P","P"},
-      {"", "", "", "", "", "", "", ""},
-      {"", "", "", "", "", "", "", ""},
-      {"P","P","P","P","P","P","P","P"},
-      {"R","N","B","Q","K","B","N","R"}
-    };
-    grid1.setAllMarks(tileMarks);
-    grid1.startPrintingGridMarks();
-    System.out.println("Finished setup for grid1...");
-    
-    //SETUP: Setup skyWorld constructor and objects
-    skyWorld = new World(p, "sky", skyWorldBgFile, 4.0f, 0.0f, -600.0f); //moveable World constructor
-    zapdos = new Sprite(p, zapdosFile, 0.25f);
-    skyWorld.addSprite(zapdos);
-    skyWorld.addSpriteCopyTo(runningHorse, 100, 200);  //example Sprite added to a World at a location, with a speed
-    skyWorld.printWorldSprites();
-    System.out.println("Finieshed setup for skyWorld...");
-
-    // SETUP: Setup brickWorld constructor + objects
-    brickWorld = new World(p,"platformer", brickWorldBgFile);
-    plat = new Platform(p, PColor.MAGENTA, 500.0f, 100.0f, 200.0f, 20.0f);
-    plat.setOutlineColor(PColor.BLACK);
-    // plat.startGravity(5.0f); //sets gravity to a rate of 5.0
-    brickWorld.addSprite(plat);    
-    System.out.println("Finished setup for brickWorld...");
-
-    //SETUP: Setup endScreen constructor + objects
-    endScreen = new World(p, "end", endBgFile);
-
-    //SETUP: Set the starting screen for the game
-    currentScreen = splashScreen;
-
-    //SETUP: Sound
-      // Load a soundfile from the sounds folder of the sketch and play it back
-      // song = new SoundFile(p, "sounds/Lenny_Kravitz_Fly_Away.mp3");
-      // song.play();
-
-     // Trigger the new initialization phase
-     System.out.println("Initial Rendering of Game...");
-     initialRender(); 
-    
-    System.out.println("Game started...");
-
-  } //end setup()
-
-
-  // Method that starts drawing items on the screen
-  // Safe place to load and resize images
-  public void initialRender() {
-
-    //RENDER: All Screen Objects
-    runningHorse.initialRender();
-
-    //RENDER: splash objects
-    splashScreen.initialRender();
-    
-    //RENDER: grid1 objects
-    grid1.initialRender();
-    chick.initialRender();
-    grid1.setTileSprite(new GridLocation (chickRow, chickCol), chick);
-    grid1.addSprite(b1);
-    piece1 = Resource.loadImage(piece1File);
-    piece1.resize(grid1.getTileWidth(),grid1.getTileHeight());
-    System.out.println("Done intial render of grid1...");
-
-    //RENDER: skyWorld objects
-    skyWorld.initialRender();
-    zapdos.initialRender();
-    zapdos.moveTo(zapdosStartX, zapdosStartY);
-    // skyWorld.addSprite(zapdos);
-    // skyWorld.addSpriteCopyTo(runningHorse, 100, 200);  //example Sprite added to a World at a location, with a speed
-    // skyWorld.printWorldSprites();
-    System.out.println("Done intial render of skyWorld...");
-
-
-    //RENDER: brickWorld objects
-    brickWorld.initialRender();
-    plat.setOutlineColor(PColor.BLACK);
-    // plat.startGravity(5.0f); //sets gravity to a rate of 5.0
-    brickWorld.addSprite(plat);    
-    System.out.println("Done loading Level 3 (brickWorld)...");
-
-    //RENDER: end objects
-    endScreen.initialRender();
-
+    tileW = APP_WIDTH / COLS;
+    tileH = APP_HEIGHT / ROWS;
+    initGame();
+    System.out.println("Tower Defense Initialized");
   }
 
-  //Required Processing method that automatically loops
-  //(Anything drawn on the screen should be called from here)
+  void initGame() {
+    enemies = new ArrayList<>();
+    towers = new ArrayList<>();
+    path = new ArrayList<>();
+    waves = new ArrayList<>();
+    projectiles = new ArrayList<>();
+
+    currentWave = 0;
+    money = 100;
+    lives = 20;
+    frameCounter = 0;
+    gameOver = false;
+    gameWon = false;
+    showPreview = false;
+
+    // Define colors
+    grassColor = color(50, 160, 50);
+    grassAltColor = color(45, 150, 45);
+    pathColor = color(140, 120, 80);
+    towerColor = color(0, 100, 200);
+    enemyColor = color(220, 40, 40);
+    gridOutlineColor = color(30, 80, 30);
+    previewValidColor = color(0, 255, 0, 100);
+    previewInvalidColor = color(255, 0, 0, 100);
+    hudBgColor = color(0, 0, 0, 180);
+
+    buildPath();
+    setupWaves();
+  }
+
+  // ---------------- PATH SYSTEM ---------------- //
+
+  void buildPath() {
+    path.clear();
+    int row = 2;
+    path.add(new GridLocation(row, 0));
+    for (int col = 1; col < COLS; col++) {
+      path.add(new GridLocation(row, col));
+      if (col % 2 == 1) {
+        row = (row == 2) ? 3 : 2;
+      }
+    }
+  }
+
+  boolean isPathTile(int r, int c) {
+    for (GridLocation loc : path) {
+      if (loc.getRow() == r && loc.getCol() == c) return true;
+    }
+    return false;
+  }
+
+  boolean hasTower(int r, int c) {
+    for (Tower t : towers) {
+      if (t.loc.getRow() == r && t.loc.getCol() == c) return true;
+    }
+    return false;
+  }
+
+  boolean canPlaceTower(int r, int c) {
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
+    if (isPathTile(r, c)) return false;
+    if (hasTower(r, c)) return false;
+    return true;
+  }
+
+  // ---------------- WAVES ---------------- //
+
+  class Wave {
+    int totalEnemies;
+    int spawned = 0;
+    int spawnDelay;
+    int timer = 0;
+
+    Wave(int totalEnemies, int spawnDelay) {
+      this.totalEnemies = totalEnemies;
+      this.spawnDelay = spawnDelay;
+    }
+
+    boolean update() {
+      timer++;
+      if (spawned < totalEnemies && timer >= spawnDelay) {
+        timer = 0;
+        spawned++;
+        return true;
+      }
+      return false;
+    }
+
+    boolean isDone() {
+      return spawned >= totalEnemies;
+    }
+  }
+
+  void setupWaves() {
+    waves.add(new Wave(5, 80));
+    waves.add(new Wave(8, 65));
+    waves.add(new Wave(12, 50));
+  }
+
+  // ---------------- LOOP ---------------- //
+
   public void draw() {
+    frameCounter++;
+    background(grassColor);
 
-    // DRAW LOOP: Update Screen Visuals
-    updateTitleBar();
-    updateScreen();
+    // Draw grid
+    drawGrid();
 
-    // DRAW LOOP: Set Timers
-    int cycleTime = 1;  //milliseconds
-    int slowCycleTime = 300;  //milliseconds
-    if(slowCycleTimer == null){
-      slowCycleTimer = new CycleTimer(p, slowCycleTime);
+    if (!gameOver && !gameWon) {
+      spawnEnemies();
+      updateEnemies();
+      updateTowers();
+      handleHover(); // update tower placement preview
     }
 
-    // DRAW LOOP: Populate & Move Sprites
-    if(slowCycleTimer.isDone()){
-      populateSprites();
-      moveSprites();
-    }
+    // Draw game entities
+    drawPlacementPreview();
+    drawTowers();
+    drawEnemies();
+    drawProjectiles();
 
-    // DRAW LOOP: Pause Game Cycle
-    currentScreen.pause(cycleTime);   // slows down the game cycles
+    // HUD overlay
+    drawHUD();
 
-    // DRAW LOOP: Check for end of game
-    if(isGameOver()){
-      endGame();
-    }
-
-  } //end draw()
-
-  //------------------ USER INPUT METHODS --------------------//
-
-
-  //Known Processing method that automatically will run whenever a key is pressed
-  public void keyPressed(){
-
-    //check what key was pressed
-    System.out.println("\nKey pressed: " + p.keyCode); //key gives you a character for the key pressed
-
-    //What to do when a key is pressed?
-    
-    //KEYS FOR LEVEL1
-    if(currentScreen == grid1){
-
-      //set [S] key to move the chick down & avoid Out-of-Bounds errors
-      if(p.keyCode == 83){        
-
-        //change the field for chickRow
-        chickRow++;
-      }
-
-      // if the 'n' key is pressed, ask for their name
-      if(p.key == 'n'){
-        name = Input.getString("What is your name?");
-      }
-
-      // if the 't' key is pressed, then toggle the animation on/off
-      if(p.key == 't'){
-        //Toggle the animation on & off
-        doAnimation = !doAnimation;
-        System.out.println("doAnimation: " + doAnimation);
-      }
-
-
-
-    }
-
-    if(currentScreen == brickWorld){
-      if(p.key == 'w'){
-        plat.jump();
-      }
-    }
-
-    //CHANGING SCREENS BASED ON KEYS
-    //change to level1 if 1 key pressed, level2 if 2 key is pressed
-    if(p.key == '1'){
-      currentScreen = grid1;
-    } else if(p.key == '2'){
-      currentScreen = skyWorld;
-    } else if(p.key == '3'){
-      currentScreen = brickWorld;
-
-      //reset the moving Platform every time the Screen is re-displayed
-      plat.moveTo(500.0f, 100.0f);
-      plat.setSpeed(0,0);
-    }
-
+    // Game state
+    checkGameState();
   }
 
-  // Known Processing method that automatically will run when a mouse click triggers it
-  public void mouseClicked(){
-    
-    // Print coordinates of mouse click
-    System.out.println("\nMouse was clicked at (" + p.mouseX + "," + p.mouseY + ")");
+  // ---------------- GRID RENDERING ---------------- //
 
-    // Display color of pixel clicked
-    int color = p.get(p.mouseX, p.mouseY);
-    PColor.printPColor(p, color);
+  void drawGrid() {
+    for (int r = 0; r < ROWS; r++) {
+      for (int c = 0; c < COLS; c++) {
+        int x = c * tileW;
+        int y = r * tileH;
 
-    // if the Screen is a Grid, print grid coordinate clicked
-    if(currentScreen instanceof Grid){
-      System.out.println("Grid location --> " + ((Grid) currentScreen).getGridLocation());
-    }
+        if (isPathTile(r, c)) {
+          fill(pathColor);
+          stroke(gridOutlineColor);
+          strokeWeight(1);
+          rect(x, y, tileW, tileH);
 
-    // if the Screen is a Grid, "mark" the grid coordinate to track the state of the Grid
-    if(currentScreen instanceof Grid){
-      ((Grid) currentScreen).setMark("X",((Grid) currentScreen).getGridLocation());
-    }
+          // Path texture
+          stroke(120, 100, 60);
+          strokeWeight(1);
+          line(x + 2, y + 2, x + tileW - 2, y + tileH - 2);
+          line(x + 2, y + tileH - 2, x + tileW - 2, y + 2);
 
-    // what to do if clicked? (ex. assign a new location to piece1)
-    if(currentScreen == grid1){
-      piece1Row = grid1.getGridLocation().getRow();
-      piece1Col = grid1.getGridLocation().getCol();
-    }
-    
-
-  }
-
-
-
-  //------------------ CUSTOM  GAME METHODS --------------------//
-
-  // Updates the title bar of the Game
-  public void updateTitleBar(){
-
-    if(!isGameOver()) {
-
-      extraText = currentScreen.getName();
-
-      //set the title each loop
-      if (surface != null) {
-        surface.setTitle(titleText + "\t// CurrentScreen: " + extraText + " \t // Name: " + name + "\t // Health: " + health );
-      }
-      //adjust the extra text as desired
-    
-    }
-  }
-
-  // Updates what is drawn on the screen each frame
-  public void updateScreen(){
-
-    // UPDATE: first lay down the Background
-    currentScreen.showBg();
-
-    // UPDATE: splashScreen
-    if(currentScreen == splashScreen){
-
-      // Print an s in console when splashscreen is up
-      System.out.print("s");
-
-      // Change the screen to level 1 between 3 and 5 seconds
-      if(splashScreen.getScreenTime() > 3000 && splashScreen.getScreenTime() < 5000){
-        currentScreen = grid1;
+          // Direction arrows
+          int idx = indexOfPathTile(r, c);
+          if (idx >= 0 && idx < path.size() - 1) {
+            GridLocation next = path.get(idx + 1);
+            int nx = next.getCol() * tileW + tileW / 2;
+            int ny = next.getRow() * tileH + tileH / 2;
+            int cx = x + tileW / 2;
+            int cy = y + tileH / 2;
+            stroke(100, 80, 50);
+            strokeWeight(2);
+            line(cx, cy, nx, ny);
+            float angle = atan2(ny - cy, nx - cx);
+            line(nx, ny, nx - 8 * cos(angle - 0.4f), ny - 8 * sin(angle - 0.4f));
+            line(nx, ny, nx - 8 * cos(angle + 0.4f), ny - 8 * sin(angle + 0.4f));
+          }
+        } else {
+          // Grass with checkerboard pattern
+          fill((r + c) % 2 == 0 ? grassColor : grassAltColor);
+          stroke(gridOutlineColor);
+          strokeWeight(1);
+          rect(x, y, tileW, tileH);
+        }
       }
     }
 
-    // UPDATE: grid1 Screen
-    if(currentScreen == grid1){
+    // Grid border
+    noFill();
+    stroke(20, 60, 20);
+    strokeWeight(3);
+    rect(0, 0, APP_WIDTH, APP_HEIGHT);
+  }
 
-      // Print a '1' in console when level1
-      System.out.print("1");
+  int indexOfPathTile(int r, int c) {
+    for (int i = 0; i < path.size(); i++) {
+      GridLocation loc = path.get(i);
+      if (loc.getRow() == r && loc.getCol() == c) return i;
+    }
+    return -1;
+  }
 
-      // Displays the piece1 image at a new row or column
-      GridLocation piece1Loc = new GridLocation(piece1Row,piece1Col);
-      grid1.setTileImage(piece1Loc, piece1);
+  // ---------------- ENEMY ---------------- //
 
-      // Displays the chick image
-      GridLocation chickLoc = new GridLocation(chickRow, chickCol);
-      grid1.setTileSprite(chickLoc, chick);
+  class Enemy {
+    int hp = 3;
+    int maxHp = 3;
+    boolean dead = false;
+    float px, py;
+    int targetPathIndex = 1;
+    int reward = 10;
 
-      // Moves to next level based on a button click
-      // b1.show();
-      if(b1.isClicked()){
-        System.out.println("\nButton Clicked");
-        currentScreen = skyWorld;
+    Enemy() {
+      GridLocation start = path.get(0);
+      px = start.getCol() * tileW + tileW / 2f;
+      py = start.getRow() * tileH + tileH / 2f;
+    }
+  }
+
+  void spawnEnemies() {
+    if (currentWave >= waves.size()) return;
+    Wave w = waves.get(currentWave);
+    if (w.update()) {
+      enemies.add(new Enemy());
+    }
+    if (w.isDone() && enemies.isEmpty()) {
+      currentWave++;
+      // Bonus money for surviving a wave
+      if (currentWave < waves.size()) {
+        money += 50;
       }
-    
     }
-    
-    // UPDATE: skyWorld Screen
-    if(currentScreen == skyWorld){
+  }
 
-      // Print a '2' in console when skyWorld
-      System.out.print("2");
+  void updateEnemies() {
+    float speed = 1.5f;
 
-      // Set speed of moving skyWorld background
-      skyWorld.moveBgXY(-0.3f, 0f);
+    for (int i = enemies.size() - 1; i >= 0; i--) {
+      Enemy e = enemies.get(i);
 
+      if (e.dead) {
+        enemies.remove(i);
+        continue;
+      }
+
+      if (e.targetPathIndex >= path.size()) {
+        enemies.remove(i);
+        lives--;
+        continue;
+      }
+
+      GridLocation targetLoc = path.get(e.targetPathIndex);
+      float targetX = targetLoc.getCol() * tileW + tileW / 2f;
+      float targetY = targetLoc.getRow() * tileH + tileH / 2f;
+
+      float dx = targetX - e.px;
+      float dy = targetY - e.py;
+      float dist = sqrt(dx * dx + dy * dy);
+
+      if (dist < speed) {
+        e.px = targetX;
+        e.py = targetY;
+        e.targetPathIndex++;
+      } else {
+        e.px += (dx / dist) * speed;
+        e.py += (dy / dist) * speed;
+      }
+    }
+  }
+
+  // ---------------- ENEMY RENDERING ---------------- //
+
+  void drawEnemies() {
+    for (Enemy e : enemies) {
+      float healthPercent = (float) e.hp / e.maxHp;
+      int enemyFill = lerpColor(color(255, 0, 0), color(255, 180, 0), healthPercent);
+      fill(enemyFill);
+      stroke(180, 0, 0);
+      strokeWeight(2);
+      ellipse(e.px, e.py, tileW * 0.55f, tileH * 0.55f);
+
+      // Eyes
+      fill(255);
+      noStroke();
+      ellipse(e.px - 5, e.py - 3, 6, 6);
+      ellipse(e.px + 5, e.py - 3, 6, 6);
+      fill(0);
+      ellipse(e.px - 5, e.py - 3, 3, 3);
+      ellipse(e.px + 5, e.py - 3, 3, 3);
+
+      // Health bar
+      int barW = 30;
+      int barH = 4;
+      int barX = (int) (e.px - barW / 2f);
+      int barY = (int) (e.py - tileH * 0.35f);
+      fill(200, 0, 0);
+      noStroke();
+      rect(barX, barY, barW, barH);
+      fill(0, 200, 0);
+      rect(barX, barY, barW * healthPercent, barH);
+      stroke(60);
+      strokeWeight(1);
+      noFill();
+      rect(barX, barY, barW, barH);
+    }
+  }
+
+  // ---------------- TOWERS ---------------- //
+
+  class Tower {
+    GridLocation loc;
+    int range = 2;
+    int damage = 1;
+    int cooldown = 0;
+    int cost = 75;
+
+    Tower(GridLocation loc) {
+      this.loc = loc;
+    }
+  }
+
+  void updateTowers() {
+    for (Tower t : towers) {
+      if (t.cooldown > 0) {
+        t.cooldown--;
+        continue;
+      }
+      Enemy target = findBestTarget(t);
+      if (target != null) {
+        target.hp -= t.damage;
+        t.cooldown = 12;
+        projectiles.add(new Projectile(t, target));
+        if (target.hp <= 0) {
+          target.dead = true;
+          money += target.reward;
+        }
+      }
+    }
+  }
+
+  // ---------------- PROJECTILES ---------------- //
+
+  class Projectile {
+    float x, y;
+    float targetX, targetY;
+    float speed = 5;
+    boolean alive = true;
+
+    Projectile(Tower t, Enemy e) {
+      this.x = t.loc.getCol() * tileW + tileW / 2f;
+      this.y = t.loc.getRow() * tileH + tileH / 2f;
+      this.targetX = e.px;
+      this.targetY = e.py;
     }
 
-    // UPDATE: brickWorld Screen
-    if(currentScreen == brickWorld){
+    boolean update() {
+      float dx = targetX - x;
+      float dy = targetY - y;
+      float dist = sqrt(dx * dx + dy * dy);
+      if (dist < speed) {
+        alive = false;
+        return false;
+      }
+      x += (dx / dist) * speed;
+      y += (dy / dist) * speed;
+      return true;
+    }
+  }
 
-      // Print a '3 in console when brickWorld
-      System.out.print("3");
+  void drawProjectiles() {
+    for (int i = projectiles.size() - 1; i >= 0; i--) {
+      Projectile proj = projectiles.get(i);
+      if (!proj.update() || !proj.alive) {
+        projectiles.remove(i);
+        continue;
+      }
+      fill(255, 255, 100);
+      noStroke();
+      ellipse(proj.x, proj.y, 7, 7);
+      // Glow effect
+      fill(255, 255, 200, 100);
+      ellipse(proj.x, proj.y, 12, 12);
+    }
+  }
 
+  // ---------------- TOWER RENDERING ---------------- //
 
+  void drawTowers() {
+    for (Tower t : towers) {
+      int tx = t.loc.getCol() * tileW;
+      int ty = t.loc.getRow() * tileH;
+      int cx = tx + tileW / 2;
+      int cy = ty + tileH / 2;
+
+      // Tower base
+      fill(80, 80, 90);
+      stroke(140, 140, 160);
+      strokeWeight(2);
+      rect(tx + 4, ty + 4, tileW - 8, tileH - 8, 4);
+
+      // Tower top
+      fill(towerColor);
+      stroke(160, 200, 255);
+      strokeWeight(1);
+      ellipse(cx, cy, tileW * 0.45f, tileH * 0.45f);
+
+      // Gun barrel
+      float angle = frameCounter * 0.03f + t.loc.hashCode() * 0.5f;
+      int barrelLen = tileW / 3;
+      int bx = (int) (cx + cos(angle) * barrelLen);
+      int by = (int) (cy + sin(angle) * barrelLen);
+      stroke(180, 200, 255);
+      strokeWeight(3);
+      line(cx, cy, bx, by);
+
+      // Center
+      fill(255);
+      noStroke();
+      ellipse(cx, cy, 7, 7);
+    }
+  }
+
+  // ---------------- PLACEMENT PREVIEW ---------------- //
+
+  void handleHover() {
+    if (gameOver || gameWon) {
+      showPreview = false;
+      return;
+    }
+    if (mouseY < 45 || mouseY > APP_HEIGHT - 35) {
+      showPreview = false;
+      return;
     }
 
-    // UPDATE: End Screen
-    // if(currentScreen == endScreen){
+    previewCol = mouseX / tileW;
+    previewRow = mouseY / tileH;
+    previewValid = canPlaceTower(previewRow, previewCol) && money >= towerCost;
+    showPreview = true;
+  }
 
-    // }
+  void drawPlacementPreview() {
+    if (!showPreview || gameOver || gameWon) return;
 
-    // UPDATE: Any Screen
-    if(doAnimation){
-      runningHorse.animateHorizontal(0.5f, 1.0f, true);
+    int px = previewCol * tileW;
+    int py = previewRow * tileH;
+
+    if (previewValid) {
+      fill(previewValidColor);
+    } else {
+      fill(previewInvalidColor);
+    }
+    noStroke();
+    rect(px, py, tileW, tileH);
+
+    // Range preview
+    if (previewValid) {
+      int cx = px + tileW / 2;
+      int cy = py + tileH / 2;
+      int rangePx = 2 * Math.min(tileW, tileH) / 2;
+      noFill();
+      stroke(255, 255, 255, 50);
+      strokeWeight(1);
+      ellipse(cx, cy, rangePx * 2, rangePx * 2);
+    }
+  }
+
+  // ---------------- TARGETING ---------------- //
+
+  Enemy findBestTarget(Tower t) {
+    Enemy best = null;
+    float bestProgress = -1;
+
+    for (Enemy e : enemies) {
+      float towerCX = t.loc.getCol() * tileW + tileW / 2f;
+      float towerCY = t.loc.getRow() * tileH + tileH / 2f;
+      float dist = sqrt(sq(e.px - towerCX) + sq(e.py - towerCY));
+      float distInTiles = dist / Math.min(tileW, tileH);
+
+      if (distInTiles > t.range) continue;
+
+      if (e.targetPathIndex > bestProgress) {
+        bestProgress = e.targetPathIndex;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  // ---------------- HUD ---------------- //
+
+  void drawHUD() {
+    // === TOP BAR ===
+    noStroke();
+    fill(hudBgColor);
+    rect(0, 0, APP_WIDTH, 45);
+
+    textSize(15);
+    textAlign(LEFT, CENTER);
+
+    // Lives
+    fill(255, 60, 60);
+    text("♥ " + lives, 15, 22);
+
+    // Money
+    fill(255, 220, 0);
+    text("$" + money, 110, 22);
+
+    // Wave
+    fill(100, 200, 255);
+    text("Wave " + (currentWave + 1) + "/" + waves.size(), 200, 22);
+
+    // Tower cost info
+    fill(180, 180, 255);
+    text("Tower: $" + towerCost, 350, 22);
+
+    // Enemy count
+    if (currentWave < waves.size()) {
+      Wave w = waves.get(currentWave);
+      fill(255, 150, 150);
+      text("Enemies: " + enemies.size() + " (" + w.spawned + "/" + w.totalEnemies + ")", 480, 22);
     }
 
-    // UPDATE: Other built-in to current World/Grid/HexGrid
-    currentScreen.show();
+    // === BOTTOM BAR ===
+    fill(hudBgColor);
+    rect(0, APP_HEIGHT - 35, APP_WIDTH, 35);
 
+    textSize(12);
+    textAlign(CENTER, CENTER);
+    fill(180);
+    if (!gameOver && !gameWon) {
+      text("Click on green tiles to place towers ($" + towerCost + " each)  |  Cannot place on the brown path", APP_WIDTH / 2, APP_HEIGHT - 17);
+    } else {
+      text("Click PLAY AGAIN to restart", APP_WIDTH / 2, APP_HEIGHT - 17);
+    }
   }
 
-  // Populates enemies or other sprites on the Screen
-  public void populateSprites(){
+  // ---------------- REPLAY BUTTON ---------------- //
 
-    //What is the index for the last column?
-    
-
-    //Loop through all the rows in the last column
-
-      //Generate a random number
-
-
-      //10% of the time, decide to add an enemy image to a Tile
-      
-
+  boolean isMouseOverReplay() {
+    int btnX = APP_WIDTH / 2 - 100;
+    int btnY = APP_HEIGHT / 2 + 50;
+    int btnW = 200;
+    int btnH = 50;
+    return mouseX >= btnX && mouseX <= btnX + btnW &&
+           mouseY >= btnY && mouseY <= btnY + btnH;
   }
 
-  // Moves around the enemies/sprites on the Screen
-  public void moveSprites(){
+  void drawReplayButton() {
+    int btnX = APP_WIDTH / 2 - 100;
+    int btnY = APP_HEIGHT / 2 + 50;
+    int btnW = 200;
+    int btnH = 50;
 
-    //Loop through all of the rows & cols in the grid
+    boolean hovered = isMouseOverReplay();
 
-        //Store the current GridLocation
+    if (hovered) {
+      fill(60, 180, 60);
+    } else {
+      fill(40, 140, 40);
+    }
+    stroke(100, 255, 100);
+    strokeWeight(2);
+    rect(btnX, btnY, btnW, btnH, 8);
 
-        //Store the next GridLocation
-
-        //Check if the current tile has an image that is not piece1      
-
-
-          //Get image/sprite from current location
-            
-
-          //CASE 1: Collision with piece1
-
-
-          //CASE 2: Move enemy over to new location
-
-
-          //Erase image/sprite from old location
-
-          //System.out.println(loc + " " + grid.hasTileImage(loc));
-
-            
-        //CASE 3: Enemy leaves screen at first column
-
+    fill(255);
+    textSize(18);
+    textAlign(CENTER, CENTER);
+    noStroke();
+    text("PLAY AGAIN", APP_WIDTH / 2, btnY + btnH / 2);
   }
 
-  // Checks if there is a collision between Sprites on the Screen
-  public boolean checkCollision(GridLocation loc, GridLocation nextLoc){
+  // ---------------- MOUSE INPUT ---------------- //
 
-    //Check what image/sprite is stored in the CURRENT location
-    // PImage image = grid.getTileImage(loc);
-    // AnimatedSprite sprite = grid.getTileSprite(loc);
+  public void mouseClicked() {
+    // Replay button
+    if ((gameOver || gameWon) && isMouseOverReplay()) {
+      initGame();
+      loop();
+      return;
+    }
 
-    //if empty --> no collision
+    // Tower placement
+    if (!gameOver && !gameWon) {
+      int col = mouseX / tileW;
+      int row = mouseY / tileH;
 
-    //Check what image/sprite is stored in the NEXT location
-
-    //if empty --> no collision
-
-    //check if enemy runs into player
-
-      //clear out the enemy if it hits the player (using cleartTileImage() or clearTileSprite() from Grid class)
-
-      //Update status variable
-
-    //check if a player collides into enemy
-
-    return false; //<--default return
+      if (canPlaceTower(row, col) && money >= towerCost) {
+        money -= towerCost;
+        towers.add(new Tower(new GridLocation(row, col)));
+        towerCost += 15; // Each tower costs more
+      }
+    }
   }
 
-  // Indicates when the main game is over
-  public boolean isGameOver(){
-    
-    return false; //by default, the game is never over
+  // ---------------- GAME STATE ---------------- //
+
+  void checkGameState() {
+    if (lives <= 0 && !gameOver) {
+      gameOver = true;
+    }
+    if (currentWave >= waves.size() && enemies.isEmpty() && lives > 0 && !gameWon && !gameOver) {
+      gameWon = true;
+    }
+
+    if (gameOver) {
+      drawEndScreen("GAME OVER", color(255, 60, 60), "You lost all your lives!");
+      drawReplayButton();
+    } else if (gameWon) {
+      drawEndScreen("VICTORY!", color(80, 255, 80), "Final Score: $" + money);
+      drawReplayButton();
+    }
   }
 
-  // Describes what happens after the game is over
-  public void endGame(){
-      System.out.println("Game Over!");
-
-      // Update the title bar
-
-      // Show any end imagery
-      currentScreen = endScreen;
-
+  void drawEndScreen(String title, int titleColor, String subtitle) {
+    fill(0, 0, 0, 190);
+    noStroke();
+    rect(0, 0, APP_WIDTH, APP_HEIGHT);
+    fill(titleColor);
+    textSize(48);
+    textAlign(CENTER, CENTER);
+    text(title, APP_WIDTH / 2, APP_HEIGHT / 2 - 30);
+    fill(200);
+    textSize(20);
+    text(subtitle, APP_WIDTH / 2, APP_HEIGHT / 2 + 10);
   }
-
-
-} // end of Game class
+}
