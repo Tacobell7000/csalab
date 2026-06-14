@@ -161,6 +161,13 @@ public class Game extends PApplet {
     return true;
   }
 
+  Tower getTowerAt(int r, int c) {
+    for (Tower t : towers) {
+      if (t.loc.getRow() == r && t.loc.getCol() == c) return t;
+    }
+    return null;
+  }
+
   // ---------------- WAVES ---------------- //
 
   class Wave {
@@ -343,22 +350,37 @@ public class Game extends PApplet {
 
   // ---------------- ENEMY ---------------- //
 
+  final int ENEMY_NORMAL = 0, ENEMY_FAST = 1, ENEMY_TANK = 2, ENEMY_SHIELDED = 3;
+
   class Enemy {
-    int hp = 3, maxHp = 3;
+    int hp = 5, maxHp = 5;
     boolean dead = false;
+    int enemyType = ENEMY_NORMAL;
+    boolean shieldActive = false;
     float px, py;
     int targetPathIndex = 1;
-    int reward = 10;
+    int reward = 8;
     boolean isBoss = false;
-    boolean isUpperPath; // true = upper, false = lower
+    boolean isUpperPath;
+    float speedMult = 1.0f; // individual speed multiplier
 
-    Enemy() {
-      // Randomly assign to upper or lower path
+    Enemy(int type) {
+      this.enemyType = type;
       isUpperPath = random(1) < 0.5f;
       ArrayList<GridLocation> chosenPath = isUpperPath ? pathUpper : pathLower;
       GridLocation start = chosenPath.get(0);
       px = start.getCol() * tileW + tileW / 2f;
       py = start.getRow() * tileH + tileH / 2f;
+      if (type == ENEMY_FAST) {
+        hp = 3; speedMult = 2.2f; reward = 3;
+      } else if (type == ENEMY_TANK) {
+        hp = 20; speedMult = 0.55f; reward = 10;
+      } else if (type == ENEMY_SHIELDED) {
+        hp = 10; shieldActive = true; speedMult = 0.85f; reward = 7;
+      } else {
+        hp = 6; speedMult = 1.0f; reward = 5;
+      }
+      maxHp = hp;
     }
   }
 
@@ -366,16 +388,23 @@ public class Game extends PApplet {
     if (currentWave >= waves.size()) return;
     Wave w = waves.get(currentWave);
     if (w.update()) {
-      Enemy e = new Enemy();
-      e.hp = (int) Math.ceil(3 * w.enemyHpMult);
+      int type = ENEMY_NORMAL;
+      float roll = random(1);
+      if (w.waveNum >= 3) {
+        if (roll < 0.15f) type = ENEMY_FAST;
+        else if (roll < 0.30f) type = ENEMY_TANK;
+        else if (roll < 0.40f && w.waveNum >= 5) type = ENEMY_SHIELDED;
+      }
+      Enemy e = new Enemy(type);
+      e.hp = (int) Math.ceil(e.hp * w.enemyHpMult);
       e.maxHp = e.hp;
-      e.reward = 10 + (e.hp - 3) * 3;
-      e.isBoss = w.enemyHpMult >= 2.5f;
+      e.reward = (int)(e.reward + (e.hp - 3) * 1.5f);
+      e.isBoss = w.enemyHpMult >= 3.0f;
       enemies.add(e);
     }
     if (w.isDone() && enemies.isEmpty()) {
       currentWave++;
-      if (currentWave < waves.size()) money += 30 + currentWave * 10;
+      if (currentWave < waves.size()) addMoney(10 + currentWave * 3);
     }
   }
 
@@ -395,7 +424,7 @@ public class Game extends PApplet {
       float ty = targetLoc.getRow() * tileH + tileH / 2f;
       float dx = tx - e.px, dy = ty - e.py;
       float dist = sqrt(dx * dx + dy * dy);
-      float speed = baseSpeed * speedMult;
+      float speed = baseSpeed * speedMult * e.speedMult;
       if (dist < speed) { e.px = tx; e.py = ty; e.targetPathIndex++; }
       else { e.px += dx / dist * speed; e.py += dy / dist * speed; }
     }
@@ -404,28 +433,65 @@ public class Game extends PApplet {
   void drawEnemies() {
     for (Enemy e : enemies) {
       float hpPct = (float) e.hp / e.maxHp;
+      float sz = tileW * 0.5f;
+
       if (e.isBoss) {
         fill(lerpColor(color(180, 0, 255), color(255, 100, 50), 1 - hpPct));
         stroke(120, 0, 200); strokeWeight(3);
-        ellipse(e.px, e.py, tileW * 0.75f, tileH * 0.75f);
+        sz = tileW * 0.8f;
+        ellipse(e.px, e.py, sz, sz * 0.75f);
+        // Crown
         stroke(255, 200, 0); strokeWeight(2);
-        float top = e.py - tileH * 0.42f;
-        line(e.px - 12, top + 8, e.px - 6, top);
-        line(e.px - 6, top, e.px, top + 6);
-        line(e.px + 6, top, e.px + 12, top + 8);
+        float top = e.py - sz * 0.5f;
+        line(e.px - 14, top + 8, e.px - 7, top);
+        line(e.px - 7, top, e.px, top + 7);
+        line(e.px + 7, top, e.px + 14, top + 8);
+      } else if (e.enemyType == ENEMY_FAST) {
+        fill(lerpColor(color(255, 140, 0), color(255, 255, 0), hpPct));
+        stroke(200, 100, 0); strokeWeight(2);
+        sz = tileW * 0.4f;
+        // Lightning bolt shape: narrow top, wide bottom
+        triangle(e.px, e.py - sz * 0.6f, e.px - sz * 0.35f, e.py + sz * 0.5f, e.px + sz * 0.35f, e.py + sz * 0.5f);
+        fill(255); noStroke();
+        ellipse(e.px - 4, e.py - 2, 5, 5); ellipse(e.px + 4, e.py - 2, 5, 5);
+        fill(0); ellipse(e.px - 4, e.py - 2, 2.5f, 2.5f); ellipse(e.px + 4, e.py - 2, 2.5f, 2.5f);
+      } else if (e.enemyType == ENEMY_TANK) {
+        fill(lerpColor(color(100, 100, 150), color(180, 180, 220), hpPct));
+        stroke(60, 60, 120); strokeWeight(3);
+        sz = tileW * 0.65f;
+        rectMode(CENTER);
+        rect(e.px, e.py, sz, sz, 6);
+        rectMode(CORNER);
+        fill(255); noStroke();
+        ellipse(e.px - 5, e.py - 3, 6, 6); ellipse(e.px + 5, e.py - 3, 6, 6);
+        fill(0); ellipse(e.px - 5, e.py - 3, 3, 3); ellipse(e.px + 5, e.py - 3, 3, 3);
+      } else if (e.enemyType == ENEMY_SHIELDED) {
+        fill(lerpColor(color(0, 180, 220), color(0, 220, 255), hpPct));
+        stroke(0, 100, 180); strokeWeight(2);
+        sz = tileW * 0.5f;
+        ellipse(e.px, e.py, sz, sz);
+        if (e.shieldActive) {
+          fill(0, 200, 255, 80); noStroke();
+          ellipse(e.px, e.py, sz * 1.3f, sz * 1.3f);
+        }
+        fill(255); noStroke();
+        ellipse(e.px - 4, e.py - 2, 5, 5); ellipse(e.px + 4, e.py - 2, 5, 5);
+        fill(0); ellipse(e.px - 4, e.py - 2, 2.5f, 2.5f); ellipse(e.px + 4, e.py - 2, 2.5f, 2.5f);
       } else {
-        fill(lerpColor(color(255, 0, 0), color(255, 180, 0), hpPct));
-        stroke(180, 0, 0); strokeWeight(2);
-        ellipse(e.px, e.py, tileW * 0.5f, tileH * 0.5f);
+        fill(lerpColor(color(255, 40, 40), color(255, 180, 40), hpPct));
+        stroke(180, 20, 20); strokeWeight(2);
+        ellipse(e.px, e.py, sz, sz);
+        fill(255); noStroke();
+        ellipse(e.px - 4, e.py - 2, 5, 5); ellipse(e.px + 4, e.py - 2, 5, 5);
+        fill(0); ellipse(e.px - 4, e.py - 2, 2.5f, 2.5f); ellipse(e.px + 4, e.py - 2, 2.5f, 2.5f);
       }
-      fill(255); noStroke();
-      ellipse(e.px - 4, e.py - 2, 5, 5); ellipse(e.px + 4, e.py - 2, 5, 5);
-      fill(0); ellipse(e.px - 4, e.py - 2, 2.5f, 2.5f); ellipse(e.px + 4, e.py - 2, 2.5f, 2.5f);
-      int barW = e.isBoss ? 40 : 28, barH = 4;
-      int barX = (int)(e.px - barW / 2f), barY = (int)(e.py - tileH * (e.isBoss ? 0.45f : 0.32f));
+
+      int barW = e.isBoss ? 44 : 30, barH = 5;
+      int barX = (int)(e.px - barW / 2f), barY = (int)(e.py - sz * 0.65f);
       fill(200, 0, 0); noStroke(); rect(barX, barY, barW, barH);
       fill(0, 200, 0); rect(barX, barY, barW * hpPct, barH);
-      stroke(e.isBoss ? color(255, 200, 0) : color(60)); strokeWeight(1); noFill(); rect(barX, barY, barW, barH);
+      stroke(e.isBoss ? color(255, 200, 0) : e.enemyType == ENEMY_FAST ? color(255, 200, 0) : color(60));
+      strokeWeight(1); noFill(); rect(barX, barY, barW, barH);
     }
   }
 
@@ -436,6 +502,7 @@ public class Game extends PApplet {
   class Tower {
     GridLocation loc;
     int type, range, damage, cooldown, maxCooldown, cost;
+    int level = 1; // 1-3
 
     Tower(GridLocation loc, int type) {
       this.loc = loc; this.type = type;
@@ -444,6 +511,20 @@ public class Game extends PApplet {
       else if (type == TYPE_SNIPER) { range = 4; damage = 3; maxCooldown = 30; cost = 90; }
       else                          { range = 0; damage = 0; maxCooldown = 120; cost = 150; }
       cooldown = 0;
+    }
+
+    void upgrade() {
+      if (level >= 3) return;
+      level++;
+      if (type == TYPE_BASIC)      { damage += 1; range = Math.min(range + 1, 4); maxCooldown = Math.max(5, maxCooldown - 2); }
+      else if (type == TYPE_SPLASH) { damage += 1; maxCooldown = Math.max(12, maxCooldown - 5); }
+      else if (type == TYPE_SNIPER) { damage += 2; maxCooldown = Math.max(15, maxCooldown - 5); }
+      else                          { maxCooldown = Math.max(60, maxCooldown - 30); }
+    }
+
+    int upgradeCost() {
+      if (level >= 3) return 9999;
+      return cost * (level + 1) / 2; // 50% then 100% of base cost
     }
   }
 
@@ -466,10 +547,17 @@ public class Game extends PApplet {
       } else {
         Enemy target = findBestTarget(t);
         if (target != null) {
-          target.hp -= t.damage;
-          t.cooldown = t.maxCooldown;
-          projectiles.add(new Projectile(t, target));
-          if (target.hp <= 0) { target.dead = true; addMoney(target.reward); }
+          // Shield absorbs first hit
+          if (target.shieldActive) {
+            target.shieldActive = false;
+            t.cooldown = t.maxCooldown;
+            projectiles.add(new Projectile(t, target));
+          } else {
+            target.hp -= t.damage;
+            t.cooldown = t.maxCooldown;
+            projectiles.add(new Projectile(t, target));
+            if (target.hp <= 0) { target.dead = true; addMoney(target.reward); }
+          }
         }
       }
     }
@@ -593,48 +681,75 @@ public class Game extends PApplet {
   }
 
   void drawTowerBasic(int tx, int ty, int cx, int cy, Tower t) {
+    // Color intensifies with level
+    int baseCol = t.level == 1 ? color(0, 100, 200) : t.level == 2 ? color(0, 130, 240) : color(0, 160, 255);
     fill(80, 80, 90); stroke(140, 140, 160); strokeWeight(2);
     rect(tx + 4, ty + 4, tileW - 8, tileH - 8, 4);
-    fill(0, 100, 200); stroke(160, 200, 255); strokeWeight(1);
+    fill(baseCol); stroke(160, 200, 255); strokeWeight(1);
     ellipse(cx, cy, tileW * 0.4f, tileH * 0.4f);
-    float ang = frameCounter * 0.03f + t.loc.hashCode() * 0.5f;
-    int bx = (int)(cx + cos(ang) * tileW / 3), by = (int)(cy + sin(ang) * tileW / 3);
-    stroke(180, 200, 255); strokeWeight(3); line(cx, cy, bx, by);
+    // Extra barrels for higher levels
+    for (int l = 0; l < t.level; l++) {
+      float ang = frameCounter * 0.03f + t.loc.hashCode() * 0.5f + l * TWO_PI / 3;
+      int bx = (int)(cx + cos(ang) * (tileW / 3 + l * 5));
+      int by = (int)(cy + sin(ang) * (tileW / 3 + l * 5));
+      stroke(180, 200, 255); strokeWeight(3 - l * 0.5f); line(cx, cy, bx, by);
+    }
     fill(255); noStroke(); ellipse(cx, cy, 6, 6);
+    // Level stars
+    if (t.level >= 2) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★", cx, ty + tileH - 5); }
+    if (t.level >= 3) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★★", cx, ty + tileH - 5); }
   }
 
   void drawTowerSplash(int tx, int ty, int cx, int cy, Tower t) {
+    int baseCol = t.level == 1 ? color(50, 200, 50) : t.level == 2 ? color(50, 230, 80) : color(50, 255, 100);
     fill(60, 90, 60); stroke(100, 200, 100); strokeWeight(2);
     rect(tx + 4, ty + 4, tileW - 8, tileH - 8, 8);
-    fill(50, 200, 50); stroke(150, 255, 150); strokeWeight(1);
+    fill(baseCol); stroke(150, 255, 150); strokeWeight(1);
     ellipse(cx, cy, tileW * 0.45f, tileH * 0.45f);
     fill(40, 150, 40); noStroke();
     rect(cx - tileW / 6, cy - tileH / 5, tileW / 3, tileH / 4, 3);
-    float pulse = sin(frameCounter * 0.1f) * 3 + 7;
-    fill(100, 255, 100, 100); ellipse(cx, cy, pulse, pulse);
+    // More pulse rings per level
+    for (int l = 0; l < t.level; l++) {
+      float pulse = sin(frameCounter * 0.1f + l) * (3 + l * 2) + (7 + l * 3);
+      fill(100, 255, 100, 100 - l * 30); ellipse(cx, cy, pulse, pulse);
+    }
+    if (t.level >= 2) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★", cx, ty + tileH - 5); }
+    if (t.level == 3) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★★", cx, ty + tileH - 5); }
   }
 
   void drawTowerSniper(int tx, int ty, int cx, int cy, Tower t) {
+    int baseCol = t.level == 1 ? color(200, 60, 60) : t.level == 2 ? color(240, 40, 40) : color(255, 20, 20);
     fill(60, 60, 80); stroke(150, 150, 200); strokeWeight(2);
     rect(tx + 2, ty + 8, tileW - 4, tileH - 16, 2);
-    fill(200, 60, 60); stroke(255, 100, 100); strokeWeight(1);
+    fill(baseCol); stroke(255, 100, 100); strokeWeight(1);
     ellipse(cx, cy, tileW * 0.3f, tileH * 0.3f);
-    float ang = frameCounter * 0.02f + t.loc.hashCode() * 0.3f;
-    int bx = (int)(cx + cos(ang) * tileW * 0.7f), by = (int)(cy + sin(ang) * tileW * 0.7f);
-    stroke(180, 60, 60); strokeWeight(4); line(cx, cy, bx, by);
+    // More scopes at higher levels
+    for (int l = 0; l < t.level; l++) {
+      float ang = frameCounter * 0.02f + t.loc.hashCode() * 0.3f + l * 0.5f;
+      int bx = (int)(cx + cos(ang) * tileW * 0.7f);
+      int by = (int)(cy + sin(ang) * tileW * 0.7f);
+      stroke(180, 60, 60); strokeWeight(4 - l); line(cx, cy, bx, by);
+    }
     fill(255); noStroke(); ellipse(cx, cy, 6, 6);
-    stroke(255, 100, 100); strokeWeight(1); noFill(); ellipse(cx, cy, tileW, tileH * 0.6f);
+    stroke(255, 100, 100); strokeWeight(1); noFill();
+    ellipse(cx, cy, tileW, tileH * 0.6f);
+    if (t.level >= 2) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★", cx, ty + tileH - 5); }
+    if (t.level == 3) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★★", cx, ty + tileH - 5); }
   }
 
   void drawTowerGenerator(int tx, int ty, int cx, int cy, Tower t) {
+    int baseCol = t.level == 1 ? color(255, 220, 0) : t.level == 2 ? color(255, 240, 50) : color(255, 255, 100);
     fill(80, 70, 30); stroke(200, 180, 80); strokeWeight(2);
     rect(tx + 4, ty + 4, tileW - 8, tileH - 8, 4);
-    fill(255, 220, 0); stroke(255, 240, 100); strokeWeight(1);
+    fill(baseCol); stroke(255, 240, 100); strokeWeight(1);
     ellipse(cx, cy, tileW * 0.4f, tileH * 0.4f);
     fill(40, 40, 0); noStroke();
-    textSize(tileW * 0.35f); textAlign(CENTER, CENTER); text("$", cx, cy + 1);
+    textSize(tileW * (0.3f + t.level * 0.05f)); textAlign(CENTER, CENTER);
+    text("$", cx, cy + 1);
     float spark = sin(frameCounter * 0.12f);
     fill(255, 255, 100, 100 + (int)(spark * 80)); ellipse(cx, cy - tileH * 0.25f, 8, 8);
+    if (t.level >= 2) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★", cx, ty + tileH - 5); }
+    if (t.level == 3) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★★", cx, ty + tileH - 5); }
   }
 
   // ---------------- PREVIEW ---------------- //
@@ -760,7 +875,17 @@ public class Game extends PApplet {
     if ((gameOver || gameWon) && isMouseOverReplay()) { initGameData(); loop(); return; }
     if (!gameOver && !gameWon) {
       int col = mouseX / tileW, row = mouseY / tileH;
-      if (canPlaceTower(row, col) && money >= towerCosts[selectedTowerType]) {
+      Tower existing = getTowerAt(row, col);
+      if (existing != null) {
+        // Upgrade existing tower if same type and not max level
+        if (existing.type == selectedTowerType && existing.level < 3) {
+          int cost = existing.upgradeCost();
+          if (money >= cost) {
+            money -= cost;
+            existing.upgrade();
+          }
+        }
+      } else if (canPlaceTower(row, col) && money >= towerCosts[selectedTowerType]) {
         money -= towerCosts[selectedTowerType];
         towers.add(new Tower(new GridLocation(row, col), selectedTowerType));
       }
