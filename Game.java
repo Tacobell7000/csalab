@@ -92,6 +92,10 @@ public class Game extends PApplet {
     selectedTowerType = 0;
     buildPaths();
     setupWaves();
+  }
+
+  void startGame() {
+    initGameData();
     screen = SCREEN_GAME;
   }
 
@@ -644,10 +648,10 @@ public class Game extends PApplet {
       int mapX = APP_WIDTH / 2 + 40, mapW = 320;
       for (int m = 0; m < 3; m++) { int by = 185 + m * 50; if (mouseX >= mapX && mouseX <= mapX + mapW && mouseY >= by && mouseY <= by + 42) { mapType = m; return; } }
       int sbX = APP_WIDTH / 2 - 150, sbY = 448, sbW = 300, sbH = 55;
-      if (mouseX >= sbX && mouseX <= sbX + sbW && mouseY >= sbY && mouseY <= sbY + sbH) { initGameData(); return; }
+      if (mouseX >= sbX && mouseX <= sbX + sbW && mouseY >= sbY && mouseY <= sbY + sbH) { startGame(); return; }
       return;
     }
-    if ((gameOver || gameWon) && isMouseOverReplay()) { initGameData(); loop(); return; }
+    if ((gameOver || gameWon) && isMouseOverReplay()) { startGame(); loop(); return; }
     if (!gameOver && !gameWon) {
       int col = mouseX / tileW, row = mouseY / tileH;
       Tower existing = getTowerAt(row, col);
