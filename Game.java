@@ -9,7 +9,7 @@ public class Game extends PApplet {
 
   PApplet p;
 
-  static final int ROWS = 8;
+  static final int ROWS = 10;
   static final int COLS = 10;
 
   ArrayList<GridLocation> path;
@@ -89,12 +89,8 @@ public class Game extends PApplet {
 
   void buildPath() {
     path.clear();
-    // Snake-like path across the 10x8 map
-    // Row 1: left to right (cols 0-9)
-    for (int c = 0; c < COLS; c++) path.add(new GridLocation(1, c));
-    // Down to row 2, right to left
-    for (int c = COLS - 1; c >= 0; c--) path.add(new GridLocation(2, c));
-    // Down to row 3, left to right
+    // Snake path through middle rows 3-6, leaving rows 0-2 and 7-9 free for towers
+    // Row 3: left to right
     for (int c = 0; c < COLS; c++) path.add(new GridLocation(3, c));
     // Down to row 4, right to left
     for (int c = COLS - 1; c >= 0; c--) path.add(new GridLocation(4, c));
