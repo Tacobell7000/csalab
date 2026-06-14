@@ -129,17 +129,23 @@ public class Game extends PApplet {
     return true;
   }
 
-  // ---------------- WAVES ---------------- //
+  // ---------------- WAVES (DYNAMIC SCALING) ---------------- //
 
   class Wave {
+    int waveNum;
     int totalEnemies;
     int spawned = 0;
     int spawnDelay;
     int timer = 0;
+    float enemyHpMult;    // How much HP enemies in this wave have
+    float enemySpeedMult; // How fast they move
 
-    Wave(int totalEnemies, int spawnDelay) {
+    Wave(int waveNum, int totalEnemies, int spawnDelay, float enemyHpMult, float enemySpeedMult) {
+      this.waveNum = waveNum;
       this.totalEnemies = totalEnemies;
       this.spawnDelay = spawnDelay;
+      this.enemyHpMult = enemyHpMult;
+      this.enemySpeedMult = enemySpeedMult;
     }
 
     boolean update() {
@@ -158,9 +164,18 @@ public class Game extends PApplet {
   }
 
   void setupWaves() {
-    waves.add(new Wave(5, 80));
-    waves.add(new Wave(8, 65));
-    waves.add(new Wave(12, 50));
+    // Generate 10 waves with progressive difficulty
+    // Wave params: (waveNum, totalEnemies, spawnDelay, hpMult, speedMult)
+    waves.add(new Wave(1,  5,  80, 1.0f, 1.0f));
+    waves.add(new Wave(2,  8,  70, 1.0f, 1.0f));
+    waves.add(new Wave(3,  10, 65, 1.2f, 1.1f));
+    waves.add(new Wave(4,  12, 60, 1.5f, 1.1f));
+    waves.add(new Wave(5,  6,  75, 2.5f, 0.9f));  // Boss wave - fewer but tough
+    waves.add(new Wave(6,  14, 55, 1.5f, 1.2f));
+    waves.add(new Wave(7,  16, 50, 1.8f, 1.2f));
+    waves.add(new Wave(8,  18, 45, 2.0f, 1.3f));
+    waves.add(new Wave(9,  20, 40, 2.2f, 1.4f));
+    waves.add(new Wave(10, 8,  65, 4.0f, 1.0f)); // Final boss wave
   }
 
   // ---------------- LOOP ---------------- //
@@ -261,6 +276,7 @@ public class Game extends PApplet {
     float px, py;
     int targetPathIndex = 1;
     int reward = 10;
+    boolean isBoss = false;
 
     Enemy() {
       GridLocation start = path.get(0);
@@ -273,22 +289,35 @@ public class Game extends PApplet {
     if (currentWave >= waves.size()) return;
     Wave w = waves.get(currentWave);
     if (w.update()) {
-      enemies.add(new Enemy());
+      Enemy e = new Enemy();
+      // Apply wave's HP multiplier
+      e.hp = (int) Math.ceil(3 * w.enemyHpMult);
+      e.maxHp = e.hp;
+      // Scale reward with HP
+      e.reward = 10 + (e.hp - 3) * 3;
+      // Mark boss enemies
+      e.isBoss = w.enemyHpMult >= 2.5f;
+      enemies.add(e);
     }
     if (w.isDone() && enemies.isEmpty()) {
       currentWave++;
-      // Bonus money for surviving a wave
       if (currentWave < waves.size()) {
-        money += 50;
+        money += 30 + currentWave * 10;
       }
     }
   }
 
   void updateEnemies() {
-    float speed = 1.5f;
+    // Base speed, multiplied by current wave's speed factor
+    float baseSpeed = 1.5f;
+    float speedMult = 1.0f;
+    if (currentWave < waves.size()) {
+      speedMult = waves.get(currentWave).enemySpeedMult;
+    }
 
     for (int i = enemies.size() - 1; i >= 0; i--) {
       Enemy e = enemies.get(i);
+      float speed = baseSpeed * speedMult;
 
       if (e.dead) {
         enemies.remove(i);
@@ -325,11 +354,30 @@ public class Game extends PApplet {
   void drawEnemies() {
     for (Enemy e : enemies) {
       float healthPercent = (float) e.hp / e.maxHp;
-      int enemyFill = lerpColor(color(255, 0, 0), color(255, 180, 0), healthPercent);
-      fill(enemyFill);
-      stroke(180, 0, 0);
-      strokeWeight(2);
-      ellipse(e.px, e.py, tileW * 0.55f, tileH * 0.55f);
+
+      if (e.isBoss) {
+        // Boss rendering - larger, purple, with crown lines
+        int bossFill = lerpColor(color(180, 0, 255), color(255, 100, 50), 1 - healthPercent);
+        fill(bossFill);
+        stroke(120, 0, 200);
+        strokeWeight(3);
+        ellipse(e.px, e.py, tileW * 0.75f, tileH * 0.75f);
+
+        // Crown spikes
+        stroke(255, 200, 0);
+        strokeWeight(2);
+        float top = e.py - tileH * 0.42f;
+        line(e.px - 12, top + 8, e.px - 6, top);
+        line(e.px - 6, top, e.px, top + 6);
+        line(e.px + 6, top, e.px + 12, top + 8);
+      } else {
+        // Normal enemy
+        int enemyFill = lerpColor(color(255, 0, 0), color(255, 180, 0), healthPercent);
+        fill(enemyFill);
+        stroke(180, 0, 0);
+        strokeWeight(2);
+        ellipse(e.px, e.py, tileW * 0.55f, tileH * 0.55f);
+      }
 
       // Eyes
       fill(255);
@@ -341,16 +389,16 @@ public class Game extends PApplet {
       ellipse(e.px + 5, e.py - 3, 3, 3);
 
       // Health bar
-      int barW = 30;
-      int barH = 4;
+      int barW = e.isBoss ? 40 : 30;
+      int barH = 5;
       int barX = (int) (e.px - barW / 2f);
-      int barY = (int) (e.py - tileH * 0.35f);
+      int barY = (int) (e.py - tileH * (e.isBoss ? 0.45f : 0.35f));
       fill(200, 0, 0);
       noStroke();
       rect(barX, barY, barW, barH);
       fill(0, 200, 0);
       rect(barX, barY, barW * healthPercent, barH);
-      stroke(60);
+      stroke(e.isBoss ? color(255, 200, 0) : color(60));
       strokeWeight(1);
       noFill();
       rect(barX, barY, barW, barH);
