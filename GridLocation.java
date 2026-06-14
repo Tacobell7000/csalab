@@ -1,45 +1,55 @@
 /**
- * GridLocation class - helper class to store coordinates more easily
- * @author Joel A Bianchi
- * @version 5/10/25
- * Modified toString
+ * GridLocation - immutable row/col coordinate for grid-based games
  */
-public class GridLocation{
- 
-  int row;
-  int col;
-  
-  public GridLocation(int row, int col){
+public class GridLocation {
+
+  private final int row;
+  private final int col;
+
+  public GridLocation(int row, int col) {
     this.row = row;
     this.col = col;
   }
-  
-  public int getRow(){
+
+  // ---------------- ACCESSORS ---------------- //
+
+  public int getRow() {
     return row;
   }
-  
-  public int getCol(){
+
+  public int getCol() {
     return col;
   }
-  
-  public String toString(){
-    return "[" + row + "," + col + "]";
-  }
-  
+
+  // optional aliases (kept for compatibility)
   public int getYCoord() {
     return row;
   }
-  
+
   public int getXCoord() {
     return col;
   }
 
-  public boolean equals(GridLocation otherLoc){
-    if(getRow() == otherLoc.getRow() && getCol() == otherLoc.getCol()){
-      return true;
-    }
-    return false;
+  // ---------------- UTILITY ---------------- //
 
+  @Override
+  public String toString() {
+    return "[" + row + "," + col + "]";
   }
- 
-} // end of GridLocation class
+
+  // ---------------- FIXED EQUALITY ---------------- //
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) return true;
+    if (obj == null || getClass() != obj.getClass()) return false;
+
+    GridLocation other = (GridLocation) obj;
+    return row == other.row && col == other.col;
+  }
+
+  @Override
+  public int hashCode() {
+    return 31 * row + col;
+  }
+}

@@ -10,45 +10,37 @@ import java.awt.event.ActionListener;
 import processing.core.PApplet;
 
 
-public class Main extends JPanel {
+public class TDMain extends JPanel {
 
   private static Game gameApp;
   private Timer gameLoopTimer;
-  public static final int APP_WIDTH = 800;
-  public static final int APP_HEIGHT = 600;
+  public static final int APP_WIDTH = Game.APP_WIDTH;
+  public static final int APP_HEIGHT = Game.APP_HEIGHT;
 
-  public Main() {
+  public TDMain() {
     
-    Dimension containerSize = new Dimension(800, 600);
+    Dimension containerSize = new Dimension(APP_WIDTH, APP_HEIGHT);
     setPreferredSize(containerSize);
     setMinimumSize(containerSize);
     setMaximumSize(containerSize);
 
-    // 1. Instantiate Game as an anonymous subclass to unlock 'protected' methods
     gameApp = new Game() {
-
-      // Instance Initialization Block runs immediately after the constructor
       {
-        this.width = Main.APP_WIDTH;
-        this.height = Main.APP_HEIGHT;
-        // this.p = this;     
-        this.g = this.makeGraphics(Main.APP_WIDTH, Main.APP_HEIGHT, PApplet.JAVA2D, null, true);
+        this.width = TDMain.APP_WIDTH;
+        this.height = TDMain.APP_HEIGHT;
+        this.g = this.makeGraphics(TDMain.APP_WIDTH, TDMain.APP_HEIGHT, PApplet.JAVA2D, null, true);
       }
     };
 
-    // 2. Manually trigger custom setup parameters
-    // (Skip settings() entirely here so Processing doesn't throw a lifecycle error)
     gameApp.setup();
 
-
-    // 3. Setup JavaSwing loop timer running at 30 FPS
     gameLoopTimer = new Timer(33, new ActionListener() {
       @Override
       public void actionPerformed(ActionEvent e) {
         if (gameApp != null) {
           gameApp.frameCount++;
           gameApp.draw();
-          Main.this.repaint();
+          TDMain.this.repaint();
         }
       }
     });
@@ -74,15 +66,14 @@ public class Main extends JPanel {
       System.setProperty("sun.java2d.d3d", "false");
 
       SwingUtilities.invokeLater(() -> {
-        JFrame webFrame = new JFrame("APCSA Java Processing Game WebApp");
+        JFrame webFrame = new JFrame("Tower Defense - APCSA");
         webFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        webFrame.add(new Main());
+        webFrame.add(new TDMain());
         webFrame.pack();
         webFrame.setLocationRelativeTo(null);
         webFrame.setVisible(true);
       });
     } else {
-      // Local IDE Execution path
       PApplet.main("Game", args);
     }
   }
