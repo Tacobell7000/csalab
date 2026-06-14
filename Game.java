@@ -22,7 +22,7 @@ public class Game extends PApplet {
   int[] diffStartLives = {30, 25, 18};
   float[] diffHpScale = {0.7f, 1.0f, 1.4f};
   float[] diffSpeedScale = {0.85f, 1.0f, 1.2f};
-  int[] diffWaveCount = {8, 10, 12};
+  int[] diffWaveCount = {12, 15, 18};
 
   // Two separate paths for upper and lower lanes
   ArrayList<GridLocation> pathUpper;
@@ -193,16 +193,19 @@ public class Game extends PApplet {
 
     for (int w = 0; w < total; w++) {
       float prog = (float) w / (total - 1);
-      enemyCounts[w] = (int)(5 + prog * (total + 5));
-      delays[w] = 80 - (int)(prog * 40);
-      hpScalars[w] = hs * (1.0f + prog * 3.0f);
-      spScalars[w] = ss * (1.0f + prog * 0.5f);
+      // More enemies, faster spawns as waves progress
+      enemyCounts[w] = (int)(6 + prog * (total + 10));
+      delays[w] = 80 - (int)(prog * 50);
+      // HP scales much harder - goes up to 6x by final wave
+      hpScalars[w] = hs * (1.0f + prog * 5.0f);
+      // Speed scales more aggressively
+      spScalars[w] = ss * (1.0f + prog * 0.8f);
 
-      // Boss waves at wave 5, 10, etc.
+      // Boss waves at wave 5, 10, 15
       if (w > 0 && w % 5 == 0) {
-        enemyCounts[w] = enemyCounts[w] / 2;
-        hpScalars[w] *= 1.8f;
-        spScalars[w] *= 0.7f;
+        enemyCounts[w] = Math.max(3, enemyCounts[w] / 3);
+        hpScalars[w] *= 2.5f;
+        spScalars[w] *= 0.6f;
       }
     }
 
@@ -446,32 +449,49 @@ public class Game extends PApplet {
       if (t.type == TYPE_GENERATOR) continue;
       if (t.cooldown > 0) { t.cooldown--; continue; }
       if (t.type == TYPE_SPLASH) {
-        boolean hit = false;
-        for (int i = enemies.size() - 1; i >= 0; i--) {
-          Enemy e = enemies.get(i);
-          if (distTowerToEnemy(t, e) <= t.range) {
-            e.hp -= t.damage; hit = true;
-            if (e.hp <= 0) { e.dead = true; money += e.reward; }
+        // Splash fires a bouncing projectile at nearest enemy
+        Enemy target = findBestTarget(t);
+        if (target != null) {
+          float baseDist = distTowerToEnemy(t, target);
+          if (baseDist <= t.range) {
+            t.cooldown = t.maxCooldown;
+            Projectile pj = new Projectile(t, target);
+            pj.bouncesLeft = 3; // Will bounce up to 3 times
+            projectiles.add(pj);
           }
         }
-        if (hit) { t.cooldown = t.maxCooldown; projectiles.add(new Projectile(t, null)); }
       } else {
         Enemy target = findBestTarget(t);
         if (target != null) {
           target.hp -= t.damage;
           t.cooldown = t.maxCooldown;
           projectiles.add(new Projectile(t, target));
-          if (target.hp <= 0) { target.dead = true; money += target.reward; }
+          if (target.hp <= 0) { target.dead = true; addMoney(target.reward); }
         }
       }
     }
+  }
+
+  // Bank: each banker gives +1% to all money gains
+  int countBankers() {
+    int count = 0;
+    for (Tower t : towers) if (t.type == TYPE_GENERATOR) count++;
+    return count;
+  }
+
+  float moneyMultiplier() {
+    return 1.0f + countBankers() * 0.01f;
+  }
+
+  void addMoney(int base) {
+    money += (int)(base * moneyMultiplier());
   }
 
   void handleGenerators() {
     for (Tower t : towers) {
       if (t.type == TYPE_GENERATOR) {
         if (t.cooldown > 0) t.cooldown--;
-        if (t.cooldown <= 0) { money += 5; t.cooldown = t.maxCooldown; }
+        if (t.cooldown <= 0) { addMoney(5); t.cooldown = t.maxCooldown; }
       }
     }
   }
@@ -488,6 +508,7 @@ public class Game extends PApplet {
     float x, y, targetX, targetY, speed = 6;
     boolean alive = true;
     int type;
+    int bouncesLeft = 0;
 
     Projectile(Tower t, Enemy e) {
       this.type = t.type;
@@ -496,16 +517,46 @@ public class Game extends PApplet {
       if (e != null) { this.targetX = e.px; this.targetY = e.py; }
       else { this.targetX = x; this.targetY = y; alive = false; }
       if (type == TYPE_SNIPER) speed = 12;
+      if (type == TYPE_SPLASH) speed = 5;
     }
 
     boolean update() {
       if (!alive) return false;
       float dx = targetX - x, dy = targetY - y;
       float dist = sqrt(dx * dx + dy * dy);
-      if (dist < speed) { alive = false; return false; }
+      if (dist < speed) {
+        if (type == TYPE_SPLASH && bouncesLeft > 0) {
+          // Bounce: deal damage to current target and find another
+          Enemy hit = findNearestEnemy(x, y, null);
+          if (hit != null) {
+            hit.hp--;
+            if (hit.hp <= 0) { hit.dead = true; addMoney(hit.reward); }
+            // Find new bounce target
+            Enemy next = findNearestEnemy(x, y, hit);
+            if (next != null) {
+              this.targetX = next.px;
+              this.targetY = next.py;
+              bouncesLeft--;
+              return true;
+            }
+          }
+        }
+        alive = false; return false;
+      }
       x += dx / dist * speed; y += dy / dist * speed;
       return true;
     }
+  }
+
+  Enemy findNearestEnemy(float sx, float sy, Enemy exclude) {
+    Enemy best = null;
+    float bestDist = 9999;
+    for (Enemy e : enemies) {
+      if (e == exclude || e.dead) continue;
+      float d = sqrt(sq(e.px - sx) + sq(e.py - sy));
+      if (d < bestDist) { bestDist = d; best = e; }
+    }
+    return best;
   }
 
   void drawProjectiles() {
@@ -515,7 +566,9 @@ public class Game extends PApplet {
       if (pj.type == TYPE_SNIPER) {
         fill(255, 80, 80); noStroke(); ellipse(pj.x, pj.y, 4, 10);
       } else if (pj.type == TYPE_SPLASH) {
-        fill(100, 255, 100, 150); noStroke(); ellipse(pj.x, pj.y, 18, 18);
+        fill(100, 255, 100, 150); noStroke(); ellipse(pj.x, pj.y, 14, 14);
+        // Bounce trail
+        fill(100, 255, 100, 60); ellipse(pj.x, pj.y, 20, 20);
       } else {
         fill(255, 255, 100); noStroke(); ellipse(pj.x, pj.y, 7, 7);
         fill(255, 255, 200, 100); ellipse(pj.x, pj.y, 12, 12);
