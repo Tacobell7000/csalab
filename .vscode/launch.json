@@ -2,15 +2,13 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Play Tower Defense (csalab)",
             "type": "java",
+            "name": "Play Tower Defense",
             "request": "launch",
             "mainClass": "TDMain",
-            "projectName": "csalab",
             "classPaths": [
-                "lib/core/core.jar",
-                "lib/sound/*.jar",
-                "target/classes"
+                "${workspaceFolder:csalab}/lib/core/core.jar",
+                "${workspaceFolder:csalab}/target/classes"
             ]
         }
     ]
