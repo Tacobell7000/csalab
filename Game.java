@@ -18,16 +18,19 @@ public class Game extends PApplet {
 
   // Difficulty
   int difficulty = 1; // 0=easy, 1=medium, 2=hard
-  float[] diffStartMoney = {225, 150, 90};
+  float[] diffStartMoney = {250, 180, 100};
   int[] diffStartLives = {30, 25, 18};
   float[] diffHpScale = {0.7f, 1.0f, 1.4f};
   float[] diffSpeedScale = {0.85f, 1.0f, 1.2f};
   int[] diffWaveCount = {12, 15, 18};
 
-  // Two separate paths for upper and lower lanes
-  ArrayList<GridLocation> pathUpper;
-  ArrayList<GridLocation> pathLower;
-  ArrayList<GridLocation> allPathTiles; // combined for isPathTile check
+  // Map type: 0=dual lane, 1=loop, 2=S-shape
+  int mapType = 0;
+  String[] mapNames = {"Dual Lane", "Loop", "S-Shape"};
+
+  // Path storage - different for each map type
+  ArrayList<ArrayList<GridLocation>> enemyPaths; // multiple paths per map
+  ArrayList<GridLocation> allPathTiles;
 
   ArrayList<Enemy> enemies;
   ArrayList<Tower> towers;
@@ -36,7 +39,7 @@ public class Game extends PApplet {
   ArrayList<Wave> waves;
   int currentWave = 0;
 
-  int money = 150;
+  int money = 180;
   int lives = 25;
 
   int frameCounter = 0;
@@ -56,7 +59,6 @@ public class Game extends PApplet {
 
   int tileW, tileH;
 
-  // Start screen button states
   int startBtnX, startBtnY, startBtnW, startBtnH;
 
   // ---------------- SETUP ---------------- //
@@ -80,13 +82,11 @@ public class Game extends PApplet {
     startBgColor = color(20, 40, 20);
 
     allPathTiles = new ArrayList<>();
-    pathUpper = new ArrayList<>();
-    pathLower = new ArrayList<>();
+    enemyPaths = new ArrayList<>();
 
-    startBtnX = APP_WIDTH / 2 - 120;
-    startBtnY = 0; // set per button
-    startBtnW = 240;
+    startBtnX = APP_WIDTH / 2 - 130;
     startBtnH = 50;
+    startBtnW = 260;
 
     initGameData();
     System.out.println("Tower Defense Initialized - Map: " + COLS + "x" + ROWS);
@@ -98,8 +98,7 @@ public class Game extends PApplet {
     projectiles = new ArrayList<>();
     waves = new ArrayList<>();
     allPathTiles.clear();
-    pathUpper.clear();
-    pathLower.clear();
+    enemyPaths.clear();
 
     currentWave = 0;
     money = (int) diffStartMoney[difficulty];
@@ -115,29 +114,49 @@ public class Game extends PApplet {
     screen = SCREEN_GAME;
   }
 
-  // ---------------- DUAL PATH SYSTEM ---------------- //
+  // ---------------- MAP SYSTEM ---------------- //
 
   void buildPaths() {
-    pathUpper.clear();
-    pathLower.clear();
+    enemyPaths.clear();
     allPathTiles.clear();
 
-    // Upper lane: row 2 left to right
-    for (int c = 0; c < COLS; c++) {
-      pathUpper.add(new GridLocation(2, c));
+    if (mapType == 0) {
+      // DUAL LANE: upper row 2, lower rows 6-7
+      ArrayList<GridLocation> upper = new ArrayList<>();
+      ArrayList<GridLocation> lower = new ArrayList<>();
+      for (int c = 0; c < COLS; c++) upper.add(new GridLocation(2, c));
+      for (int c = 0; c < COLS; c++) lower.add(new GridLocation(6, c));
+      for (int c = COLS - 1; c >= 0; c--) lower.add(new GridLocation(7, c));
+      enemyPaths.add(upper);
+      enemyPaths.add(lower);
+    } else if (mapType == 1) {
+      // LOOP: perimeter loop
+      ArrayList<GridLocation> loop = new ArrayList<>();
+      // Top edge left to right (row 1)
+      for (int c = 0; c < COLS; c++) loop.add(new GridLocation(1, c));
+      // Right edge down (col 9, rows 2-8)
+      for (int r = 2; r < ROWS - 1; r++) loop.add(new GridLocation(r, COLS - 1));
+      // Bottom edge right to left (row 8)
+      for (int c = COLS - 2; c >= 0; c--) loop.add(new GridLocation(ROWS - 2, c));
+      // Left edge up (col 0, rows 7-2)
+      for (int r = ROWS - 3; r >= 2; r--) loop.add(new GridLocation(r, 0));
+      enemyPaths.add(loop);
+    } else if (mapType == 2) {
+      // S-SHAPE: single long snake through all columns
+      ArrayList<GridLocation> snake = new ArrayList<>();
+      for (int r = 1; r < ROWS - 1; r++) {
+        if (r % 2 == 1) {
+          for (int c = 0; c < COLS; c++) snake.add(new GridLocation(r, c));
+        } else {
+          for (int c = COLS - 1; c >= 0; c--) snake.add(new GridLocation(r, c));
+        }
+      }
+      enemyPaths.add(snake);
     }
 
-    // Lower lane: row 6 left to right, then row 7 right to left
-    for (int c = 0; c < COLS; c++) {
-      pathLower.add(new GridLocation(6, c));
+    for (ArrayList<GridLocation> path : enemyPaths) {
+      allPathTiles.addAll(path);
     }
-    for (int c = COLS - 1; c >= 0; c--) {
-      pathLower.add(new GridLocation(7, c));
-    }
-
-    // Combine for checking if a tile is any path
-    allPathTiles.addAll(pathUpper);
-    allPathTiles.addAll(pathLower);
   }
 
   boolean isPathTile(int r, int c) {
@@ -192,7 +211,6 @@ public class Game extends PApplet {
     float ss = diffSpeedScale[difficulty];
     int total = diffWaveCount[difficulty];
 
-    // Generate waves dynamically based on difficulty
     int[] enemyCounts = new int[total];
     float[] hpScalars = new float[total];
     float[] spScalars = new float[total];
@@ -200,25 +218,17 @@ public class Game extends PApplet {
 
     for (int w = 0; w < total; w++) {
       float prog = (float) w / (total - 1);
-      // EXPONENTIAL scaling - early waves easy, late waves brutal
       float expFactor = (float) Math.pow(prog * 2.0 + 0.3, 2.8);
-      
       enemyCounts[w] = (int)(5 + expFactor * (total + 8));
       delays[w] = Math.max(20, 80 - (int)(prog * 60));
-      
-      // HP scales exponentially - final wave ~10x base HP
       hpScalars[w] = hs * (0.8f + expFactor * 3.5f);
-      // Speed scales exponentially - final wave ~2.5x speed
       spScalars[w] = ss * (0.9f + expFactor * 0.7f);
-
-      // Boss waves at wave 5, 10, 15 - EXTREME
       if (w > 0 && w % 5 == 0) {
         enemyCounts[w] = Math.max(4, enemyCounts[w] / 3);
-        hpScalars[w] *= 3.5f;   // Boss hp is insane
-        spScalars[w] *= 0.55f;  // But bosses move slower
+        hpScalars[w] *= 3.5f;
+        spScalars[w] *= 0.55f;
       }
     }
-
     for (int w = 0; w < total; w++) {
       waves.add(new Wave(w + 1, enemyCounts[w], delays[w], hpScalars[w], spScalars[w]));
     }
@@ -257,8 +267,6 @@ public class Game extends PApplet {
 
   void drawStartScreen() {
     background(startBgColor);
-    fill(grassColor);
-    noStroke();
     for (int r = 0; r < ROWS; r++) {
       for (int c = 0; c < COLS; c++) {
         fill((r + c) % 2 == 0 ? grassColor : grassAltColor);
@@ -266,51 +274,84 @@ public class Game extends PApplet {
       }
     }
 
-    // Dark overlay
     fill(0, 0, 0, 180);
     noStroke();
     rect(0, 0, APP_WIDTH, APP_HEIGHT);
 
     // Title
     fill(255, 220, 0);
-    textSize(52);
+    textSize(48);
     textAlign(CENTER, CENTER);
-    text("TOWER DEFENSE", APP_WIDTH / 2, APP_HEIGHT / 4 - 20);
+    text("TOWER DEFENSE", APP_WIDTH / 2, 80);
 
     fill(180);
-    textSize(18);
-    text("Choose Your Difficulty", APP_WIDTH / 2, APP_HEIGHT / 4 + 40);
+    textSize(16);
+    text("Step 1: Pick Difficulty", APP_WIDTH / 2, 130);
 
-    // Draw difficulty buttons
-    int btnStartY = APP_HEIGHT / 2 - 60;
-    drawDiffButton(btnStartY, "EASY", "Start: $225  Lives: 30  Slower enemies", color(60, 200, 60), 0);
-    drawDiffButton(btnStartY + 70, "MEDIUM", "Start: $150  Lives: 25  Balanced", color(200, 180, 40), 1);
-    drawDiffButton(btnStartY + 140, "HARD", "Start: $90  Lives: 18  Faster/tougher enemies", color(220, 60, 60), 2);
+    // Difficulty buttons
+    int diffY = 155;
+    drawDiffButton(diffY, "EASY", "$250  Lives:30  Slow", color(60, 200, 60), 0);
+    drawDiffButton(diffY + 55, "MEDIUM", "$180  Lives:25  Norm", color(200, 180, 40), 1);
+    drawDiffButton(diffY + 110, "HARD", "$100  Lives:18  Fast", color(220, 60, 60), 2);
+
+    // Map selection
+    fill(140);
+    textSize(14);
+    text("Step 2: Pick Map (Current: " + mapNames[mapType] + ")", APP_WIDTH / 2, 370);
+
+    int mapY = 395;
+    drawMapButton(mapY, "DUAL LANE", "Two separate paths", color(0, 120, 220), 0);
+    drawMapButton(mapY + 55, "LOOP", "Perimeter loop", color(180, 120, 40), 1);
+    drawMapButton(mapY + 110, "S-SHAPE", "Long snake path", color(120, 60, 180), 2);
+
+    // Start button
+    int startBy = mapY + 175;
+    boolean hoverStart = mouseX >= startBtnX && mouseX <= startBtnX + startBtnW &&
+                         mouseY >= startBy && mouseY <= startBy + startBtnH;
+    fill(hoverStart ? color(80, 220, 80) : color(50, 180, 50));
+    stroke(hoverStart ? 255 : color(80, 200, 80));
+    strokeWeight(2);
+    rect(startBtnX, startBy, startBtnW, startBtnH, 8);
+    fill(255);
+    textSize(22);
+    textAlign(CENTER, CENTER);
+    noStroke();
+    text("START GAME", APP_WIDTH / 2, startBy + 25);
 
     // Footer
     fill(140);
-    textSize(12);
-    text("Build towers to stop enemies from reaching the end!  4 tower types available.", APP_WIDTH / 2, APP_HEIGHT - 30);
+    textSize(11);
+    text("Click difficulty and map, then START to play!", APP_WIDTH / 2, APP_HEIGHT - 20);
   }
 
   void drawDiffButton(int y, String label, String detail, int col, int diff) {
     boolean hovered = mouseX >= startBtnX && mouseX <= startBtnX + startBtnW &&
                       mouseY >= y && mouseY <= y + startBtnH;
-
-    fill(hovered ? lerpColor(col, color(255), 0.3f) : col);
-    stroke(hovered ? 255 : lerpColor(col, color(0), 0.3f));
-    strokeWeight(2);
-    rect(startBtnX, y, startBtnW, startBtnH, 8);
-
+    boolean selected = difficulty == diff;
+    fill(selected ? lerpColor(col, color(255), 0.4f) : hovered ? lerpColor(col, color(255), 0.2f) : col);
+    stroke(selected ? color(255, 255, 0) : hovered ? 255 : lerpColor(col, color(0), 0.3f));
+    strokeWeight(selected ? 3 : 2);
+    rect(startBtnX, y, startBtnW, startBtnH, 6);
     fill(255);
-    textSize(22);
+    textSize(16);
     textAlign(CENTER, CENTER);
     noStroke();
-    text(label, APP_WIDTH / 2, y + 20);
+    text(label + "  -  " + detail, APP_WIDTH / 2, y + 25);
+  }
 
-    textSize(11);
-    fill(220);
-    text(detail, APP_WIDTH / 2, y + 41);
+  void drawMapButton(int y, String label, String detail, int col, int m) {
+    boolean hovered = mouseX >= startBtnX && mouseX <= startBtnX + startBtnW &&
+                      mouseY >= y && mouseY <= y + startBtnH;
+    boolean selected = mapType == m;
+    fill(selected ? lerpColor(col, color(255), 0.4f) : hovered ? lerpColor(col, color(255), 0.2f) : col);
+    stroke(selected ? color(255, 255, 0) : hovered ? 255 : lerpColor(col, color(0), 0.3f));
+    strokeWeight(selected ? 3 : 2);
+    rect(startBtnX, y, startBtnW, startBtnH, 6);
+    fill(255);
+    textSize(15);
+    textAlign(CENTER, CENTER);
+    noStroke();
+    text(label + "  -  " + detail, APP_WIDTH / 2, y + 25);
   }
 
   // ---------------- GRID ---------------- //
@@ -326,8 +367,7 @@ public class Game extends PApplet {
           for (int bx = x; bx < x + tileW; bx += tileW / 3) line(bx, y, bx, y + tileH);
           line(x, y + tileH / 2, x + tileW, y + tileH / 2);
         } else {
-          // Highlight the middle "no man's land" row 4-5 area
-          if (r >= 3 && r <= 5 && !isPathTile(r, c)) {
+          if (r >= 3 && r <= 5 && !isPathTile(r, c) && mapType == 0) {
             fill(35, 105, 35);
           } else {
             fill((r + c) % 2 == 0 ? grassColor : grassAltColor);
@@ -339,13 +379,6 @@ public class Game extends PApplet {
     }
     noFill(); stroke(20, 60, 20); strokeWeight(3);
     rect(0, 0, APP_WIDTH, APP_HEIGHT);
-  }
-
-  int indexInPath(ArrayList<GridLocation> path, int r, int c) {
-    for (int i = 0; i < path.size(); i++) {
-      if (path.get(i).getRow() == r && path.get(i).getCol() == c) return i;
-    }
-    return -1;
   }
 
   // ---------------- ENEMY ---------------- //
@@ -361,25 +394,19 @@ public class Game extends PApplet {
     int targetPathIndex = 1;
     int reward = 8;
     boolean isBoss = false;
-    boolean isUpperPath;
-    float speedMult = 1.0f; // individual speed multiplier
+    int pathIndex; // which enemyPaths this enemy follows
+    float speedMult = 1.0f;
 
-    Enemy(int type) {
+    Enemy(int type, int pathIdx) {
       this.enemyType = type;
-      isUpperPath = random(1) < 0.5f;
-      ArrayList<GridLocation> chosenPath = isUpperPath ? pathUpper : pathLower;
-      GridLocation start = chosenPath.get(0);
+      this.pathIndex = pathIdx;
+      GridLocation start = enemyPaths.get(pathIdx).get(0);
       px = start.getCol() * tileW + tileW / 2f;
       py = start.getRow() * tileH + tileH / 2f;
-      if (type == ENEMY_FAST) {
-        hp = 3; speedMult = 2.2f; reward = 3;
-      } else if (type == ENEMY_TANK) {
-        hp = 20; speedMult = 0.55f; reward = 10;
-      } else if (type == ENEMY_SHIELDED) {
-        hp = 10; shieldActive = true; speedMult = 0.85f; reward = 7;
-      } else {
-        hp = 6; speedMult = 1.0f; reward = 5;
-      }
+      if (type == ENEMY_FAST)       { hp = 3;  speedMult = 2.2f; reward = 3; }
+      else if (type == ENEMY_TANK)  { hp = 20; speedMult = 0.55f; reward = 10; }
+      else if (type == ENEMY_SHIELDED) { hp = 10; shieldActive = true; speedMult = 0.85f; reward = 7; }
+      else                           { hp = 6;  speedMult = 1.0f;  reward = 5; }
       maxHp = hp;
     }
   }
@@ -395,7 +422,8 @@ public class Game extends PApplet {
         else if (roll < 0.30f) type = ENEMY_TANK;
         else if (roll < 0.40f && w.waveNum >= 5) type = ENEMY_SHIELDED;
       }
-      Enemy e = new Enemy(type);
+      int pathIdx = (int) random(enemyPaths.size());
+      Enemy e = new Enemy(type, pathIdx);
       e.hp = (int) Math.ceil(e.hp * w.enemyHpMult);
       e.maxHp = e.hp;
       e.reward = (int)(e.reward + (e.hp - 3) * 1.5f);
@@ -416,7 +444,7 @@ public class Game extends PApplet {
       Enemy e = enemies.get(i);
       if (e.dead) { enemies.remove(i); continue; }
 
-      ArrayList<GridLocation> chosenPath = e.isUpperPath ? pathUpper : pathLower;
+      ArrayList<GridLocation> chosenPath = enemyPaths.get(e.pathIndex);
       if (e.targetPathIndex >= chosenPath.size()) { enemies.remove(i); lives--; continue; }
 
       GridLocation targetLoc = chosenPath.get(e.targetPathIndex);
@@ -434,13 +462,10 @@ public class Game extends PApplet {
     for (Enemy e : enemies) {
       float hpPct = (float) e.hp / e.maxHp;
       float sz = tileW * 0.5f;
-
       if (e.isBoss) {
         fill(lerpColor(color(180, 0, 255), color(255, 100, 50), 1 - hpPct));
         stroke(120, 0, 200); strokeWeight(3);
-        sz = tileW * 0.8f;
-        ellipse(e.px, e.py, sz, sz * 0.75f);
-        // Crown
+        sz = tileW * 0.8f; ellipse(e.px, e.py, sz, sz * 0.75f);
         stroke(255, 200, 0); strokeWeight(2);
         float top = e.py - sz * 0.5f;
         line(e.px - 14, top + 8, e.px - 7, top);
@@ -448,44 +473,29 @@ public class Game extends PApplet {
         line(e.px + 7, top, e.px + 14, top + 8);
       } else if (e.enemyType == ENEMY_FAST) {
         fill(lerpColor(color(255, 140, 0), color(255, 255, 0), hpPct));
-        stroke(200, 100, 0); strokeWeight(2);
-        sz = tileW * 0.4f;
-        // Lightning bolt shape: narrow top, wide bottom
+        stroke(200, 100, 0); strokeWeight(2); sz = tileW * 0.4f;
         triangle(e.px, e.py - sz * 0.6f, e.px - sz * 0.35f, e.py + sz * 0.5f, e.px + sz * 0.35f, e.py + sz * 0.5f);
-        fill(255); noStroke();
-        ellipse(e.px - 4, e.py - 2, 5, 5); ellipse(e.px + 4, e.py - 2, 5, 5);
+        fill(255); noStroke(); ellipse(e.px - 4, e.py - 2, 5, 5); ellipse(e.px + 4, e.py - 2, 5, 5);
         fill(0); ellipse(e.px - 4, e.py - 2, 2.5f, 2.5f); ellipse(e.px + 4, e.py - 2, 2.5f, 2.5f);
       } else if (e.enemyType == ENEMY_TANK) {
         fill(lerpColor(color(100, 100, 150), color(180, 180, 220), hpPct));
-        stroke(60, 60, 120); strokeWeight(3);
-        sz = tileW * 0.65f;
-        rectMode(CENTER);
-        rect(e.px, e.py, sz, sz, 6);
-        rectMode(CORNER);
-        fill(255); noStroke();
-        ellipse(e.px - 5, e.py - 3, 6, 6); ellipse(e.px + 5, e.py - 3, 6, 6);
+        stroke(60, 60, 120); strokeWeight(3); sz = tileW * 0.65f;
+        rectMode(CENTER); rect(e.px, e.py, sz, sz, 6); rectMode(CORNER);
+        fill(255); noStroke(); ellipse(e.px - 5, e.py - 3, 6, 6); ellipse(e.px + 5, e.py - 3, 6, 6);
         fill(0); ellipse(e.px - 5, e.py - 3, 3, 3); ellipse(e.px + 5, e.py - 3, 3, 3);
       } else if (e.enemyType == ENEMY_SHIELDED) {
         fill(lerpColor(color(0, 180, 220), color(0, 220, 255), hpPct));
-        stroke(0, 100, 180); strokeWeight(2);
-        sz = tileW * 0.5f;
+        stroke(0, 100, 180); strokeWeight(2); sz = tileW * 0.5f;
         ellipse(e.px, e.py, sz, sz);
-        if (e.shieldActive) {
-          fill(0, 200, 255, 80); noStroke();
-          ellipse(e.px, e.py, sz * 1.3f, sz * 1.3f);
-        }
-        fill(255); noStroke();
-        ellipse(e.px - 4, e.py - 2, 5, 5); ellipse(e.px + 4, e.py - 2, 5, 5);
+        if (e.shieldActive) { fill(0, 200, 255, 80); noStroke(); ellipse(e.px, e.py, sz * 1.3f, sz * 1.3f); }
+        fill(255); noStroke(); ellipse(e.px - 4, e.py - 2, 5, 5); ellipse(e.px + 4, e.py - 2, 5, 5);
         fill(0); ellipse(e.px - 4, e.py - 2, 2.5f, 2.5f); ellipse(e.px + 4, e.py - 2, 2.5f, 2.5f);
       } else {
         fill(lerpColor(color(255, 40, 40), color(255, 180, 40), hpPct));
-        stroke(180, 20, 20); strokeWeight(2);
-        ellipse(e.px, e.py, sz, sz);
-        fill(255); noStroke();
-        ellipse(e.px - 4, e.py - 2, 5, 5); ellipse(e.px + 4, e.py - 2, 5, 5);
+        stroke(180, 20, 20); strokeWeight(2); ellipse(e.px, e.py, sz, sz);
+        fill(255); noStroke(); ellipse(e.px - 4, e.py - 2, 5, 5); ellipse(e.px + 4, e.py - 2, 5, 5);
         fill(0); ellipse(e.px - 4, e.py - 2, 2.5f, 2.5f); ellipse(e.px + 4, e.py - 2, 2.5f, 2.5f);
       }
-
       int barW = e.isBoss ? 44 : 30, barH = 5;
       int barX = (int)(e.px - barW / 2f), barY = (int)(e.py - sz * 0.65f);
       fill(200, 0, 0); noStroke(); rect(barX, barY, barW, barH);
@@ -502,7 +512,7 @@ public class Game extends PApplet {
   class Tower {
     GridLocation loc;
     int type, range, damage, cooldown, maxCooldown, cost;
-    int level = 1; // 1-3
+    int level = 1;
 
     Tower(GridLocation loc, int type) {
       this.loc = loc; this.type = type;
@@ -524,7 +534,7 @@ public class Game extends PApplet {
 
     int upgradeCost() {
       if (level >= 3) return 9999;
-      return cost * (level + 1) / 2; // 50% then 100% of base cost
+      return cost * (level + 1) / 2;
     }
   }
 
@@ -533,21 +543,16 @@ public class Game extends PApplet {
       if (t.type == TYPE_GENERATOR) continue;
       if (t.cooldown > 0) { t.cooldown--; continue; }
       if (t.type == TYPE_SPLASH) {
-        // Splash fires a bouncing projectile at nearest enemy
         Enemy target = findBestTarget(t);
-        if (target != null) {
-          float baseDist = distTowerToEnemy(t, target);
-          if (baseDist <= t.range) {
-            t.cooldown = t.maxCooldown;
-            Projectile pj = new Projectile(t, target);
-            pj.bouncesLeft = 3; // Will bounce up to 3 times
-            projectiles.add(pj);
-          }
+        if (target != null && distTowerToEnemy(t, target) <= t.range) {
+          t.cooldown = t.maxCooldown;
+          Projectile pj = new Projectile(t, target);
+          pj.bouncesLeft = 3;
+          projectiles.add(pj);
         }
       } else {
         Enemy target = findBestTarget(t);
         if (target != null) {
-          // Shield absorbs first hit
           if (target.shieldActive) {
             target.shieldActive = false;
             t.cooldown = t.maxCooldown;
@@ -563,7 +568,6 @@ public class Game extends PApplet {
     }
   }
 
-  // Bank: each banker gives +1% to all money gains
   int countBankers() {
     int count = 0;
     for (Tower t : towers) if (t.type == TYPE_GENERATOR) count++;
@@ -617,19 +621,12 @@ public class Game extends PApplet {
       float dist = sqrt(dx * dx + dy * dy);
       if (dist < speed) {
         if (type == TYPE_SPLASH && bouncesLeft > 0) {
-          // Bounce: deal damage to current target and find another
           Enemy hit = findNearestEnemy(x, y, null);
           if (hit != null) {
             hit.hp--;
             if (hit.hp <= 0) { hit.dead = true; addMoney(hit.reward); }
-            // Find new bounce target
             Enemy next = findNearestEnemy(x, y, hit);
-            if (next != null) {
-              this.targetX = next.px;
-              this.targetY = next.py;
-              bouncesLeft--;
-              return true;
-            }
+            if (next != null) { this.targetX = next.px; this.targetY = next.py; bouncesLeft--; return true; }
           }
         }
         alive = false; return false;
@@ -658,7 +655,6 @@ public class Game extends PApplet {
         fill(255, 80, 80); noStroke(); ellipse(pj.x, pj.y, 4, 10);
       } else if (pj.type == TYPE_SPLASH) {
         fill(100, 255, 100, 150); noStroke(); ellipse(pj.x, pj.y, 14, 14);
-        // Bounce trail
         fill(100, 255, 100, 60); ellipse(pj.x, pj.y, 20, 20);
       } else {
         fill(255, 255, 100); noStroke(); ellipse(pj.x, pj.y, 7, 7);
@@ -681,13 +677,11 @@ public class Game extends PApplet {
   }
 
   void drawTowerBasic(int tx, int ty, int cx, int cy, Tower t) {
-    // Color intensifies with level
-    int baseCol = t.level == 1 ? color(0, 100, 200) : t.level == 2 ? color(0, 130, 240) : color(0, 160, 255);
+    int bc = t.level == 1 ? color(0, 100, 200) : t.level == 2 ? color(0, 130, 240) : color(0, 160, 255);
     fill(80, 80, 90); stroke(140, 140, 160); strokeWeight(2);
     rect(tx + 4, ty + 4, tileW - 8, tileH - 8, 4);
-    fill(baseCol); stroke(160, 200, 255); strokeWeight(1);
+    fill(bc); stroke(160, 200, 255); strokeWeight(1);
     ellipse(cx, cy, tileW * 0.4f, tileH * 0.4f);
-    // Extra barrels for higher levels
     for (int l = 0; l < t.level; l++) {
       float ang = frameCounter * 0.03f + t.loc.hashCode() * 0.5f + l * TWO_PI / 3;
       int bx = (int)(cx + cos(ang) * (tileW / 3 + l * 5));
@@ -695,20 +689,18 @@ public class Game extends PApplet {
       stroke(180, 200, 255); strokeWeight(3 - l * 0.5f); line(cx, cy, bx, by);
     }
     fill(255); noStroke(); ellipse(cx, cy, 6, 6);
-    // Level stars
     if (t.level >= 2) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★", cx, ty + tileH - 5); }
-    if (t.level >= 3) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★★", cx, ty + tileH - 5); }
+    if (t.level == 3) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★★", cx, ty + tileH - 5); }
   }
 
   void drawTowerSplash(int tx, int ty, int cx, int cy, Tower t) {
-    int baseCol = t.level == 1 ? color(50, 200, 50) : t.level == 2 ? color(50, 230, 80) : color(50, 255, 100);
+    int bc = t.level == 1 ? color(50, 200, 50) : t.level == 2 ? color(50, 230, 80) : color(50, 255, 100);
     fill(60, 90, 60); stroke(100, 200, 100); strokeWeight(2);
     rect(tx + 4, ty + 4, tileW - 8, tileH - 8, 8);
-    fill(baseCol); stroke(150, 255, 150); strokeWeight(1);
+    fill(bc); stroke(150, 255, 150); strokeWeight(1);
     ellipse(cx, cy, tileW * 0.45f, tileH * 0.45f);
     fill(40, 150, 40); noStroke();
     rect(cx - tileW / 6, cy - tileH / 5, tileW / 3, tileH / 4, 3);
-    // More pulse rings per level
     for (int l = 0; l < t.level; l++) {
       float pulse = sin(frameCounter * 0.1f + l) * (3 + l * 2) + (7 + l * 3);
       fill(100, 255, 100, 100 - l * 30); ellipse(cx, cy, pulse, pulse);
@@ -718,12 +710,11 @@ public class Game extends PApplet {
   }
 
   void drawTowerSniper(int tx, int ty, int cx, int cy, Tower t) {
-    int baseCol = t.level == 1 ? color(200, 60, 60) : t.level == 2 ? color(240, 40, 40) : color(255, 20, 20);
+    int bc = t.level == 1 ? color(200, 60, 60) : t.level == 2 ? color(240, 40, 40) : color(255, 20, 20);
     fill(60, 60, 80); stroke(150, 150, 200); strokeWeight(2);
     rect(tx + 2, ty + 8, tileW - 4, tileH - 16, 2);
-    fill(baseCol); stroke(255, 100, 100); strokeWeight(1);
+    fill(bc); stroke(255, 100, 100); strokeWeight(1);
     ellipse(cx, cy, tileW * 0.3f, tileH * 0.3f);
-    // More scopes at higher levels
     for (int l = 0; l < t.level; l++) {
       float ang = frameCounter * 0.02f + t.loc.hashCode() * 0.3f + l * 0.5f;
       int bx = (int)(cx + cos(ang) * tileW * 0.7f);
@@ -731,21 +722,19 @@ public class Game extends PApplet {
       stroke(180, 60, 60); strokeWeight(4 - l); line(cx, cy, bx, by);
     }
     fill(255); noStroke(); ellipse(cx, cy, 6, 6);
-    stroke(255, 100, 100); strokeWeight(1); noFill();
-    ellipse(cx, cy, tileW, tileH * 0.6f);
+    stroke(255, 100, 100); strokeWeight(1); noFill(); ellipse(cx, cy, tileW, tileH * 0.6f);
     if (t.level >= 2) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★", cx, ty + tileH - 5); }
     if (t.level == 3) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★★", cx, ty + tileH - 5); }
   }
 
   void drawTowerGenerator(int tx, int ty, int cx, int cy, Tower t) {
-    int baseCol = t.level == 1 ? color(255, 220, 0) : t.level == 2 ? color(255, 240, 50) : color(255, 255, 100);
+    int bc = t.level == 1 ? color(255, 220, 0) : t.level == 2 ? color(255, 240, 50) : color(255, 255, 100);
     fill(80, 70, 30); stroke(200, 180, 80); strokeWeight(2);
     rect(tx + 4, ty + 4, tileW - 8, tileH - 8, 4);
-    fill(baseCol); stroke(255, 240, 100); strokeWeight(1);
+    fill(bc); stroke(255, 240, 100); strokeWeight(1);
     ellipse(cx, cy, tileW * 0.4f, tileH * 0.4f);
     fill(40, 40, 0); noStroke();
-    textSize(tileW * (0.3f + t.level * 0.05f)); textAlign(CENTER, CENTER);
-    text("$", cx, cy + 1);
+    textSize(tileW * (0.3f + t.level * 0.05f)); textAlign(CENTER, CENTER); text("$", cx, cy + 1);
     float spark = sin(frameCounter * 0.12f);
     fill(255, 255, 100, 100 + (int)(spark * 80)); ellipse(cx, cy - tileH * 0.25f, 8, 8);
     if (t.level >= 2) { fill(255, 255, 0); textSize(10); textAlign(CENTER); text("★", cx, ty + tileH - 5); }
@@ -813,11 +802,10 @@ public class Game extends PApplet {
 
     fill(hudBgColor); rect(0, APP_HEIGHT - 35, APP_WIDTH, 35);
     textSize(12); textAlign(CENTER, CENTER); fill(180);
-    String tn = selectedTowerType == TYPE_BASIC ? "Gunner" :
-                selectedTowerType == TYPE_SPLASH ? "Splash" :
+    String tn = selectedTowerType == TYPE_BASIC ? "Gunner" : selectedTowerType == TYPE_SPLASH ? "Splash" :
                 selectedTowerType == TYPE_SNIPER ? "Sniper" : "Bank";
     if (!gameOver && !gameWon)
-      text("Press 1-4 to select tower  |  Selected: " + tn + " ($" + towerCosts[selectedTowerType] + ")  |  Click green tile", APP_WIDTH / 2, APP_HEIGHT - 17);
+      text("Press 1-4 to select tower  |  " + tn + " ($" + towerCosts[selectedTowerType] + ")  |  Click green tile to place, click tower to upgrade", APP_WIDTH / 2, APP_HEIGHT - 17);
     else text("Click PLAY AGAIN to restart", APP_WIDTH / 2, APP_HEIGHT - 17);
   }
 
@@ -858,16 +846,27 @@ public class Game extends PApplet {
   }
 
   public void mouseClicked() {
-    // Start screen difficulty selection
     if (screen == SCREEN_START) {
-      int yStart = APP_HEIGHT / 2 - 60;
+      int diffY = 155;
       for (int d = 0; d < 3; d++) {
-        int by = yStart + d * 70;
+        int by = diffY + d * 55;
         if (mouseX >= startBtnX && mouseX <= startBtnX + startBtnW && mouseY >= by && mouseY <= by + startBtnH) {
           difficulty = d;
-          initGameData();
           return;
         }
+      }
+      int mapY = 395;
+      for (int m = 0; m < 3; m++) {
+        int by = mapY + m * 55;
+        if (mouseX >= startBtnX && mouseX <= startBtnX + startBtnW && mouseY >= by && mouseY <= by + startBtnH) {
+          mapType = m;
+          return;
+        }
+      }
+      int startBy = mapY + 175;
+      if (mouseX >= startBtnX && mouseX <= startBtnX + startBtnW && mouseY >= startBy && mouseY <= startBy + startBtnH) {
+        initGameData();
+        return;
       }
       return;
     }
@@ -877,13 +876,9 @@ public class Game extends PApplet {
       int col = mouseX / tileW, row = mouseY / tileH;
       Tower existing = getTowerAt(row, col);
       if (existing != null) {
-        // Upgrade existing tower if same type and not max level
         if (existing.type == selectedTowerType && existing.level < 3) {
           int cost = existing.upgradeCost();
-          if (money >= cost) {
-            money -= cost;
-            existing.upgrade();
-          }
+          if (money >= cost) { money -= cost; existing.upgrade(); }
         }
       } else if (canPlaceTower(row, col) && money >= towerCosts[selectedTowerType]) {
         money -= towerCosts[selectedTowerType];
