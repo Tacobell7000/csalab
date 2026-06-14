@@ -193,19 +193,22 @@ public class Game extends PApplet {
 
     for (int w = 0; w < total; w++) {
       float prog = (float) w / (total - 1);
-      // More enemies, faster spawns as waves progress
-      enemyCounts[w] = (int)(6 + prog * (total + 10));
-      delays[w] = 80 - (int)(prog * 50);
-      // HP scales much harder - goes up to 6x by final wave
-      hpScalars[w] = hs * (1.0f + prog * 5.0f);
-      // Speed scales more aggressively
-      spScalars[w] = ss * (1.0f + prog * 0.8f);
+      // EXPONENTIAL scaling - early waves easy, late waves brutal
+      float expFactor = (float) Math.pow(prog * 2.0 + 0.3, 2.8);
+      
+      enemyCounts[w] = (int)(5 + expFactor * (total + 8));
+      delays[w] = Math.max(20, 80 - (int)(prog * 60));
+      
+      // HP scales exponentially - final wave ~10x base HP
+      hpScalars[w] = hs * (0.8f + expFactor * 3.5f);
+      // Speed scales exponentially - final wave ~2.5x speed
+      spScalars[w] = ss * (0.9f + expFactor * 0.7f);
 
-      // Boss waves at wave 5, 10, 15
+      // Boss waves at wave 5, 10, 15 - EXTREME
       if (w > 0 && w % 5 == 0) {
-        enemyCounts[w] = Math.max(3, enemyCounts[w] / 3);
-        hpScalars[w] *= 2.5f;
-        spScalars[w] *= 0.6f;
+        enemyCounts[w] = Math.max(4, enemyCounts[w] / 3);
+        hpScalars[w] *= 3.5f;   // Boss hp is insane
+        spScalars[w] *= 0.55f;  // But bosses move slower
       }
     }
 
