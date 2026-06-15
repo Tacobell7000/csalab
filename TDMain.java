@@ -7,6 +7,10 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import processing.core.PApplet;
 
 
@@ -18,63 +22,108 @@ public class TDMain extends JPanel {
   public static final int APP_HEIGHT = Game.APP_HEIGHT;
 
   public TDMain() {
-    
     Dimension containerSize = new Dimension(APP_WIDTH, APP_HEIGHT);
     setPreferredSize(containerSize);
     setMinimumSize(containerSize);
     setMaximumSize(containerSize);
 
-    gameApp = new Game() {
-      {
-        this.width = TDMain.APP_WIDTH;
-        this.height = TDMain.APP_HEIGHT;
-        this.g = this.makeGraphics(TDMain.APP_WIDTH, TDMain.APP_HEIGHT, PApplet.JAVA2D, null, true);
+    // Create Processing sketch (but do NOT manually drive setup()/draw())
+    // Processing must own its lifecycle.
+    gameApp = new Game();
+    gameApp.setSize(APP_WIDTH, APP_HEIGHT);
+
+    // Install mouse bridge (Processing reads its own mouseX/mouseY fields)
+    MouseAdapter mouseBridge = new MouseAdapter() {
+      @Override
+      public void mouseMoved(MouseEvent e) {
+        gameApp.mouseX = e.getX();
+        gameApp.mouseY = e.getY();
+        gameApp.mouseMoved();
+      }
+      @Override
+      public void mouseDragged(MouseEvent e) {
+        gameApp.mouseX = e.getX();
+        gameApp.mouseY = e.getY();
+        gameApp.mouseDragged();
+      }
+      @Override
+      public void mousePressed(MouseEvent e) {
+        gameApp.mouseX = e.getX();
+        gameApp.mouseY = e.getY();
+        gameApp.mousePressed = true;
+        gameApp.mouseButton = e.getButton();
+        gameApp.mousePressed();
+      }
+      @Override
+      public void mouseReleased(MouseEvent e) {
+        gameApp.mouseX = e.getX();
+        gameApp.mouseY = e.getY();
+        gameApp.mousePressed = false;
+        gameApp.mouseReleased();
+      }
+      @Override
+      public void mouseClicked(MouseEvent e) {
+        gameApp.mouseClicked();
       }
     };
+    addMouseListener(mouseBridge);
+    addMouseMotionListener(mouseBridge);
 
-    gameApp.setup();
-
-    gameLoopTimer = new Timer(33, new ActionListener() {
+    // Keyboard bridge
+    setFocusable(true);
+    addKeyListener(new KeyAdapter() {
       @Override
-      public void actionPerformed(ActionEvent e) {
-        if (gameApp != null) {
-          gameApp.frameCount++;
-          gameApp.draw();
-          TDMain.this.repaint();
-        }
+      public void keyPressed(KeyEvent e) {
+        gameApp.key = e.getKeyChar();
+        gameApp.keyCode = e.getKeyCode();
+        gameApp.keyPressed = true;
+        gameApp.keyPressed();
+      }
+      @Override
+      public void keyReleased(KeyEvent e) {
+        gameApp.key = e.getKeyChar();
+        gameApp.keyCode = e.getKeyCode();
+        gameApp.keyPressed = false;
+        gameApp.keyReleased();
+      }
+      @Override
+      public void keyTyped(KeyEvent e) {
+        gameApp.key = e.getKeyChar();
+        gameApp.keyTyped();
       }
     });
-      
-    gameLoopTimer.start();
+
+    // Start Processing sketch in embedded mode.
+    // This allows Processing to handle rendering and events.
+    PApplet.runSketch(new String[] {"TDMain"}, gameApp);
   }
 
   @Override
   protected void paintComponent(Graphics g) {
     super.paintComponent(g);
-    if (gameApp != null && gameApp.g != null && gameApp.g.image != null) {
-      Graphics2D g2d = (Graphics2D) g;
-      g2d.drawImage((java.awt.Image) gameApp.g.image, 0, 0, null);
-    }
+    // When using Processing's own embedded surface, do not try to draw Processing's backbuffer here.
+    // Processing renders directly into its own surface.
   }
+
 
   public static void main(String[] args) {
     boolean isWebswing = System.getProperty("webswing.clientId") != null;
 
-    if (isWebswing) {
-      System.out.println("Webswing server verified. Launching standalone Swing graphics loop...");
-      System.setProperty("sun.java2d.noddraw", "true");
-      System.setProperty("sun.java2d.d3d", "false");
+    System.out.println("Launching Tower Defense...");
+    System.setProperty("sun.java2d.noddraw", "true");
+    System.setProperty("sun.java2d.d3d", "false");
 
-      SwingUtilities.invokeLater(() -> {
-        JFrame webFrame = new JFrame("Tower Defense - APCSA");
-        webFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        webFrame.add(new TDMain());
-        webFrame.pack();
-        webFrame.setLocationRelativeTo(null);
-        webFrame.setVisible(true);
-      });
-    } else {
-      PApplet.main("Game", args);
-    }
+    SwingUtilities.invokeLater(() -> {
+      JFrame frame = new JFrame("Tower Defense - APCSA");
+      frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+      TDMain panel = new TDMain();
+      frame.add(panel);
+      frame.pack();
+      frame.setLocationRelativeTo(null);
+      frame.setVisible(true);
+      frame.setAlwaysOnTop(true);
+      frame.toFront();
+      panel.requestFocusInWindow();
+    });
   }
 }

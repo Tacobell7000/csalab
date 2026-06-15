@@ -4,6 +4,13 @@ import java.util.ArrayList;
 
 public class Game extends PApplet {
 
+  // Standalone launcher for running directly as a Processing sketch (no Swing embedding).
+  // This is the most reliable way to ensure the game window actually renders.
+  public static void main(String[] args) {
+    PApplet.main(new String[] {"Game"});
+  }
+
+
   public static final int APP_WIDTH = 960;
   public static final int APP_HEIGHT = 640;
 
@@ -13,7 +20,12 @@ public class Game extends PApplet {
   static final int COLS = 10;
 
   final int SCREEN_START = 0, SCREEN_GAME = 1;
-  int screen = SCREEN_START;
+  int screen = 0; // Force to START screen staticly
+
+  Screen startScreen;
+  Button startButton;
+  Button[] diffButtons = new Button[3];
+  Button[] mapButtons = new Button[3];
 
   int difficulty = 1;
   float[] diffStartMoney = {250, 180, 100};
@@ -60,6 +72,7 @@ public class Game extends PApplet {
   }
 
   public void setup() {
+    p = this;
     tileW = APP_WIDTH / COLS;
     tileH = APP_HEIGHT / ROWS;
     grassColor = color(50, 160, 50);
@@ -72,7 +85,44 @@ public class Game extends PApplet {
     startBgColor = color(20, 40, 20);
     allPathTiles = new ArrayList<>();
     enemyPaths = new ArrayList<>();
-    initGameData();
+
+    // Initialize Startup UI
+    startScreen = new Screen(this, "START", (String)null);
+    PImage bg = loadImage("images/sky.png");
+    if (bg == null) bg = Resource.loadImage("images/sky.png");
+    if (bg != null) bg.resize(APP_WIDTH, APP_HEIGHT);
+    startScreen.setBgImg(bg);
+
+    int bw = 300, bh = 55;
+    startButton = new Button(this, "RECT", APP_WIDTH / 2 - bw / 2, 448, bw, bh, "START GAME");
+    startButton.setFontStyle("Arial");
+    startButton.setButtonColor(color(40, 160, 40));
+    startButton.setHoverColor(color(60, 200, 60));
+    startButton.setTextColor(color(255));
+    startButton.initialRender();
+
+    String[] diffLabels = {"EASY", "MEDIUM", "HARD"};
+    for (int i = 0; i < 3; i++) {
+      diffButtons[i] = new Button(this, "RECT", 140, 185 + i * 50, 280, 42, diffLabels[i]);
+      diffButtons[i].setFontStyle("Arial");
+      diffButtons[i].setButtonColor(color(50, 50, 70));
+      diffButtons[i].setHoverColor(color(70, 70, 100));
+      diffButtons[i].setTextColor(color(255));
+      diffButtons[i].initialRender();
+    }
+
+    String[] mapNamesBtn = {"DUAL LANE", "LOOP", "S-SHAPE"};
+    for (int i = 0; i < 3; i++) {
+      mapButtons[i] = new Button(this, "RECT", APP_WIDTH / 2 + 60, 185 + i * 50, 280, 42, mapNamesBtn[i]);
+      mapButtons[i].setFontStyle("Arial");
+      mapButtons[i].setButtonColor(color(50, 50, 70));
+      mapButtons[i].setHoverColor(color(70, 70, 100));
+      mapButtons[i].setTextColor(color(255));
+      mapButtons[i].initialRender();
+    }
+
+    System.out.println("SETUP CALLED - setting screen to SCREEN_START");
+    screen = SCREEN_START;
     System.out.println("Tower Defense Initialized - Map: " + COLS + "x" + ROWS);
   }
 
@@ -92,6 +142,11 @@ public class Game extends PApplet {
     selectedTowerType = 0;
     buildPaths();
     setupWaves();
+  }
+
+  void startGame() {
+    System.out.println("STARTING GAME - switching to SCREEN_GAME");
+    initGameData();
     screen = SCREEN_GAME;
   }
 
@@ -116,9 +171,14 @@ public class Game extends PApplet {
       enemyPaths.add(loop);
     } else {
       ArrayList<GridLocation> snake = new ArrayList<>();
-      for (int r = 1; r < ROWS - 1; r++) {
-        if (r % 2 == 1) for (int c = 0; c < COLS; c++) snake.add(new GridLocation(r, c));
-        else for (int c = COLS - 1; c >= 0; c--) snake.add(new GridLocation(r, c));
+      for (int r = 1; r < ROWS - 1; r += 2) {
+        for (int c = 0; c < COLS; c++) snake.add(new GridLocation(r, c));
+        if (r + 1 < ROWS - 1) {
+          snake.add(new GridLocation(r + 1, COLS - 1));
+          for (int c = COLS - 1; c >= 0; c--) snake.add(new GridLocation(r + 2, c));
+          if (r + 3 < ROWS - 1) snake.add(new GridLocation(r + 3, 0));
+          r += 2;
+        }
       }
       enemyPaths.add(snake);
     }
@@ -178,7 +238,12 @@ public class Game extends PApplet {
   // ---------------- LOOP ---------------- //
 
   public void draw() {
-    frameCounter++;
+    rectMode(CORNER);
+    ellipseMode(CENTER);
+    if (frameCount == 1 && screen == SCREEN_START) {
+      // Ensure we are on the start screen on the first frame if not already moved
+      screen = SCREEN_START;
+    }
     if (screen == SCREEN_START) { drawStartScreen(); return; }
     background(grassColor);
     drawGrid();
@@ -192,11 +257,11 @@ public class Game extends PApplet {
   // ---------------- START SCREEN ---------------- //
 
   void drawStartScreen() {
-    // Sky gradient
-    for (int y = 0; y < APP_HEIGHT; y++) {
-      fill(lerpColor(color(10, 20, 40), color(30, 60, 100), (float) y / APP_HEIGHT));
-      noStroke(); rect(0, y, APP_WIDTH, 1);
-    }
+    rectMode(CORNER);
+    ellipseMode(CENTER);
+    background(startBgColor);
+    if (startScreen != null) startScreen.showBg();
+
     // Twinkling stars
     for (int i = 0; i < 40; i++) {
       float sx = (i * 173 + frameCounter * 0.02f) % APP_WIDTH;
@@ -227,43 +292,37 @@ public class Game extends PApplet {
     text("TOWER DEFENSE", APP_WIDTH / 2, 85);
     fill(180, 200, 220); textSize(13);
     text("Build towers. Defend your base. Survive the waves.", APP_WIDTH / 2, 120);
-    // Left: Difficulty
-    int leftX = 120, colW = 320;
+    
+    // Labels
     fill(160, 200, 240); textSize(14); textAlign(LEFT, CENTER);
-    text("> DIFFICULTY", leftX, 160);
-    drawDiffBtn(leftX, 185, colW, "EASY", "$250 | 30 Lives | Slower", color(50, 140, 50), 0);
-    drawDiffBtn(leftX, 235, colW, "MEDIUM", "$180 | 25 Lives | Balanced", color(180, 150, 30), 1);
-    drawDiffBtn(leftX, 285, colW, "HARD", "$100 | 18 Lives | Tougher", color(180, 40, 40), 2);
-    // Right: Map
-    int rightX = APP_WIDTH / 2 + 40;
-    fill(160, 200, 240); textSize(14); textAlign(LEFT, CENTER);
-    text("> MAP SELECTION", rightX, 160);
-    drawMapBtn(rightX, 185, colW, "DUAL LANE", "Two paths | Split defense", color(30, 100, 200), 0);
-    drawMapBtn(rightX, 235, colW, "LOOP", "Perimeter | Central base", color(180, 130, 30), 1);
-    drawMapBtn(rightX, 285, colW, "S-SHAPE", "Long snake | Endless", color(130, 40, 200), 2);
+    text("> DIFFICULTY", 140, 160);
+    text("> MAP SELECTION", APP_WIDTH / 2 + 60, 160);
+
+    // Buttons
+    for (int i = 0; i < 3; i++) {
+      diffButtons[i].setButtonColor(difficulty == i ? color(100, 100, 255) : color(50, 50, 70));
+      diffButtons[i].show();
+      mapButtons[i].setButtonColor(mapType == i ? color(100, 100, 255) : color(50, 50, 70));
+      mapButtons[i].show();
+    }
+    startButton.show();
+
     // Tower previews
     fill(160, 200, 240); textSize(14); textAlign(CENTER, CENTER);
     text("> TOWER TYPES", APP_WIDTH / 2, 355);
     int[] pt = {TYPE_BASIC, TYPE_SPLASH, TYPE_SNIPER, TYPE_GENERATOR};
     String[] pn = {"Gunner", "Splash", "Sniper", "Bank"};
     int[] pc = {75, 120, 90, 150};
+    int spacing = 115;
+    int totalWidth = (4 - 1) * spacing;
+    int startX = APP_WIDTH / 2 - totalWidth / 2;
     for (int pi = 0; pi < 4; pi++) {
-      int px = APP_WIDTH / 2 - 220 + pi * 115, py = 370;
-      drawMiniTower(px + 40, py, pt[pi]);
-      fill(200, 220, 240); textSize(11); textAlign(CENTER); text(pn[pi], px + 40, py + 38);
-      fill(160, 180, 200); textSize(10); text("$" + pc[pi], px + 40, py + 52);
+      int cx = startX + pi * spacing, cy = 370;
+      drawMiniTower(cx, cy, pt[pi]);
+      fill(200, 220, 240); textSize(11); textAlign(CENTER, TOP); text(pn[pi], cx, cy + 30);
+      fill(160, 180, 200); textSize(10); textAlign(CENTER, TOP); text("$" + pc[pi], cx, cy + 45);
     }
-    // START button
-    int sby = 448, bw = 300, bh = 55, bx = APP_WIDTH / 2 - bw / 2;
-    boolean hs = mouseX >= bx && mouseX <= bx + bw && mouseY >= sby && mouseY <= sby + bh;
-    fill(hs ? color(80, 255, 80, 60) : color(50, 200, 50, 30)); noStroke();
-    rect(bx - 4, sby - 4, bw + 8, bh + 8, 12);
-    fill(hs ? color(60, 200, 60) : color(40, 160, 40));
-    stroke(hs ? color(180, 255, 180) : color(80, 200, 80)); strokeWeight(2);
-    rect(bx, sby, bw, bh, 8);
-    fill(255); textSize(22); textAlign(CENTER, CENTER); noStroke();
-    text(">> START GAME <<", APP_WIDTH / 2, sby + bh / 2);
-    fill(140, 160, 180); textSize(10);
+    fill(140, 160, 180); textSize(10); textAlign(CENTER, BOTTOM);
     text("Press 1-4 in-game to switch towers  |  Click tower to upgrade (max lvl 3)", APP_WIDTH / 2, APP_HEIGHT - 25);
   }
 
@@ -275,29 +334,11 @@ public class Game extends PApplet {
     else { fill(200, 180, 20); stroke(240, 220, 80); strokeWeight(1); rect(cx - sz, cy - sz, sz * 2, sz * 2, 3); fill(60, 50, 10); noStroke(); textSize(11); textAlign(CENTER, CENTER); text("$", cx, cy); }
   }
 
-  void drawDiffBtn(int bx, int by, int bw, String label, String detail, int col, int diff) {
-    boolean hv = mouseX >= bx && mouseX <= bx + bw && mouseY >= by && mouseY <= by + 42;
-    boolean sel = difficulty == diff;
-    fill(sel ? lerpColor(col, color(255), 0.35f) : hv ? lerpColor(col, color(255), 0.15f) : col);
-    stroke(sel ? color(255, 255, 100) : hv ? color(200, 200, 255) : lerpColor(col, color(0), 0.4f));
-    strokeWeight(sel ? 3 : 1); rect(bx, by, bw, 42, 6);
-    fill(255); textSize(13); textAlign(LEFT, CENTER); noStroke(); text(label, bx + 12, by + 21);
-    fill(200, 200, 220, 150); textSize(9); textAlign(RIGHT, CENTER); text(detail, bx + bw - 10, by + 21);
-  }
-
-  void drawMapBtn(int bx, int by, int bw, String label, String detail, int col, int m) {
-    boolean hv = mouseX >= bx && mouseX <= bx + bw && mouseY >= by && mouseY <= by + 42;
-    boolean sel = mapType == m;
-    fill(sel ? lerpColor(col, color(255), 0.35f) : hv ? lerpColor(col, color(255), 0.15f) : col);
-    stroke(sel ? color(255, 255, 100) : hv ? color(200, 200, 255) : lerpColor(col, color(0), 0.4f));
-    strokeWeight(sel ? 3 : 1); rect(bx, by, bw, 42, 6);
-    fill(255); textSize(13); textAlign(LEFT, CENTER); noStroke(); text(label, bx + 12, by + 21);
-    fill(200, 200, 220, 150); textSize(9); textAlign(RIGHT, CENTER); text(detail, bx + bw - 10, by + 21);
-  }
-
   // ---------------- GRID ---------------- //
 
   void drawGrid() {
+    rectMode(CORNER);
+    ellipseMode(CENTER);
     for (int r = 0; r < ROWS; r++) {
       for (int c = 0; c < COLS; c++) {
         int x = c * tileW, y = r * tileH;
@@ -373,6 +414,8 @@ public class Game extends PApplet {
   }
 
   void drawEnemies() {
+    rectMode(CORNER);
+    ellipseMode(CENTER);
     for (Enemy e : enemies) {
       float hpPct = (float) e.hp / e.maxHp; float sz = tileW * 0.5f;
       if (e.isBoss) {
@@ -504,6 +547,8 @@ public class Game extends PApplet {
   // ---------------- TOWER RENDERING ---------------- //
 
   void drawTowers() {
+    rectMode(CORNER);
+    ellipseMode(CENTER);
     for (Tower t : towers) {
       int tx = t.loc.getCol() * tileW, ty = t.loc.getRow() * tileH, cx = tx + tileW / 2, cy = ty + tileH / 2;
       if (t.type == TYPE_BASIC) drawTowerBasic(tx, ty, cx, cy, t);
@@ -593,30 +638,43 @@ public class Game extends PApplet {
   // ---------------- HUD ---------------- //
 
   void drawHUD() {
+    pushStyle();
+    rectMode(CORNER);
+    ellipseMode(CENTER);
     noStroke(); fill(hudBgColor); rect(0, 0, APP_WIDTH, 54);
-    textSize(14); textAlign(LEFT, CENTER);
-    fill(255, 60, 60); text("Lives: " + lives, 15, 20);
-    fill(255, 220, 0); text("$" + money, 130, 20);
-    fill(100, 200, 255); text("Wave " + (currentWave + 1) + "/" + waves.size(), 220, 20);
-    if (currentWave < waves.size()) { Wave w = waves.get(currentWave); fill(255, 150, 150); text("Enemies: " + enemies.size() + " (" + w.spawned + "/" + w.totalEnemies + ")", 400, 20); }
-    textSize(12);
-    drawTowerButton(480, 30, TYPE_BASIC, "1: Gunner $75");
-    drawTowerButton(610, 30, TYPE_SPLASH, "2: Splash $120");
-    drawTowerButton(740, 30, TYPE_SNIPER, "3: Sniper $90");
-    drawTowerButton(870, 30, TYPE_GENERATOR, "4: Bank $150");
+    textSize(13); textAlign(LEFT, CENTER);
+    fill(255, 60, 60); text("Lives: " + lives, 15, 18);
+    fill(255, 220, 0); text("Cash: $" + money, 15, 36);
+    fill(100, 200, 255); text("Wave: " + (currentWave + 1) + "/" + (waves == null ? 0 : waves.size()), 110, 18);
+    if (waves != null && currentWave < waves.size()) { 
+      Wave w = waves.get(currentWave); 
+      fill(255, 150, 150); text("Enemies: " + (enemies == null ? 0 : enemies.size()) + " (" + w.spawned + "/" + w.totalEnemies + ")", 110, 36); 
+    }
+    
+    textSize(11);
+    int bx = 340;
+    drawTowerButton(bx, 17, TYPE_BASIC, "1: Gunner $75");
+    drawTowerButton(bx + 155, 17, TYPE_SPLASH, "2: Splash $120");
+    drawTowerButton(bx + 310, 17, TYPE_SNIPER, "3: Sniper $90");
+    drawTowerButton(bx + 465, 17, TYPE_GENERATOR, "4: Bank $150");
+
     fill(hudBgColor); rect(0, APP_HEIGHT - 35, APP_WIDTH, 35);
     textSize(12); textAlign(CENTER, CENTER); fill(180);
     String tn = selectedTowerType == TYPE_BASIC ? "Gunner" : selectedTowerType == TYPE_SPLASH ? "Splash" : selectedTowerType == TYPE_SNIPER ? "Sniper" : "Bank";
     if (!gameOver && !gameWon) text("Press 1-4 for tower | " + tn + " ($" + towerCosts[selectedTowerType] + ") | Click tile to place, click tower to upgrade", APP_WIDTH / 2, APP_HEIGHT - 17);
     else text("Click PLAY AGAIN to restart", APP_WIDTH / 2, APP_HEIGHT - 17);
+    popStyle();
   }
 
   void drawTowerButton(int bx, int by, int type, String label) {
+    pushStyle();
+    rectMode(CORNER);
     boolean sel = selectedTowerType == type, can = money >= towerCosts[type];
     fill(sel ? color(255, 255, 255, 200) : can ? color(80, 80, 120, 200) : color(60, 20, 20, 200));
-    stroke(sel ? color(255, 255, 0) : color(100)); strokeWeight(sel ? 2 : 1); rect(bx, by, 125, 20, 3);
-    fill(can ? (sel ? 0 : 255) : 150); textAlign(LEFT, CENTER); noStroke();
-    float tw = textWidth(label); text(label, bx + (125 - tw) / 2, by + 10);
+    stroke(sel ? color(255, 255, 0) : color(100)); strokeWeight(sel ? 2 : 1); rect(bx, by, 145, 20, 3);
+    fill(can ? (sel ? 0 : 255) : 150); textAlign(CENTER, CENTER); noStroke();
+    text(label, bx + 72.5f, by + 10);
+    popStyle();
   }
 
   // ---------------- REPLAY ---------------- //
@@ -637,17 +695,18 @@ public class Game extends PApplet {
     else if (key == '3') selectedTowerType = TYPE_SNIPER; else if (key == '4') selectedTowerType = TYPE_GENERATOR;
   }
 
-  public void mouseClicked() {
+  public void mousePressed() {
     if (screen == SCREEN_START) {
-      int diffX = 120, diffW = 320;
-      for (int d = 0; d < 3; d++) { int by = 185 + d * 50; if (mouseX >= diffX && mouseX <= diffX + diffW && mouseY >= by && mouseY <= by + 42) { difficulty = d; return; } }
-      int mapX = APP_WIDTH / 2 + 40, mapW = 320;
-      for (int m = 0; m < 3; m++) { int by = 185 + m * 50; if (mouseX >= mapX && mouseX <= mapX + mapW && mouseY >= by && mouseY <= by + 42) { mapType = m; return; } }
-      int sbX = APP_WIDTH / 2 - 150, sbY = 448, sbW = 300, sbH = 55;
-      if (mouseX >= sbX && mouseX <= sbX + sbW && mouseY >= sbY && mouseY <= sbY + sbH) { initGameData(); return; }
+      for (int d = 0; d < 3; d++) {
+        if (diffButtons[d].isMouseOverButton()) { difficulty = d; return; }
+      }
+      for (int m = 0; m < 3; m++) {
+        if (mapButtons[m].isMouseOverButton()) { mapType = m; return; }
+      }
+      if (startButton.isMouseOverButton()) { startGame(); return; }
       return;
     }
-    if ((gameOver || gameWon) && isMouseOverReplay()) { initGameData(); loop(); return; }
+    if ((gameOver || gameWon) && isMouseOverReplay()) { startGame(); loop(); return; }
     if (!gameOver && !gameWon) {
       int col = mouseX / tileW, row = mouseY / tileH;
       Tower existing = getTowerAt(row, col);
