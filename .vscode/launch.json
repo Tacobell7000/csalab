@@ -3,6 +3,13 @@
     "configurations": [
         {
             "type": "java",
+            "name": "Main",
+            "request": "launch",
+            "mainClass": "Main",
+            "projectName": "csalab_11e9e3b9"
+        },
+        {
+            "type": "java",
             "name": "Play Tower Defense",
             "request": "launch",
             "mainClass": "TDMain",

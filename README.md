@@ -1,6 +1,23 @@
 # Java Game Design with Processing [Starter Code]
 -Joel Bianchi
 
+### 🚀 How to Run the Game
+
+#### Option 1: Run on GitHub (Codespaces)
+1. Click the **Code** button on GitHub and select **Open with Codespaces**.
+2. Wait for the environment to build.
+3. A popup will appear in the bottom right corner asking to open the **Game Screen** (port 6080). Click **Open in Browser**.
+4. In the terminal, run: `bash scripts/run.sh`
+5. The game will appear in the new browser tab!
+
+#### Option 2: Run Locally (Windows)
+1. Run `scripts\run.bat` to compile and launch the game.
+
+#### Option 3: Run Locally (Mac/Linux)
+1. Run `bash scripts/run.sh` to compile and launch the game.
+
+---
+
 #### Q. What objects and methods can I use to make my game?
 A. Click here to see the [Java Game Design with Processing Documentation](https://jabianchi.github.io/APCSA-Lab-JavaGameDesignWithProcessing/javadoc/package-summary.html)
 

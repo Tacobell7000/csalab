@@ -69,6 +69,7 @@ public class Button extends Sprite{
     //Button method to be called each cycle -- ie. inside draw() or updateScreen() 
     public void show() {
     
+        p.pushStyle();
         //Sets outline stroke around button (3 pixels, BLACK)
         p.strokeWeight(2);
         p.stroke(outlineColor);
@@ -111,13 +112,14 @@ public class Button extends Sprite{
             p.text(text, shapeX, shapeY);
 
         }
+        p.popStyle();
     }
 
 
     //------------------ BUTTON HOVERING METHODS --------------------//
 
     public boolean isClicked(){
-        if (isMouseOverButton() && p.mousePressed) {
+        if (isMouseOverButton() && p.mousePressed && p.frameCount > 1) {
             System.out.println("Button Clicked");
             return true;
         } else{

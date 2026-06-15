@@ -38,7 +38,7 @@ public class AnimatedSprite extends Sprite{
    * @param aSpeed        how quickly the animations will cycle
    */
   public AnimatedSprite(PApplet p, String png, String json, float x, float y, float aSpeed) {
-    super(p, png, x, y, 1.0f, true);
+    super(p, png, 1.0f, x, y, true);
     
     this.jsonFile = json;
     this.pngFile = png;
@@ -77,8 +77,10 @@ public class AnimatedSprite extends Sprite{
     //super.initialRender();
 
     this.animation = convertPngToList(pngFile);
-    super.setW(this.animation.get(0).width);
-    super.setH(this.animation.get(0).height);
+    if (this.animation != null && !this.animation.isEmpty()) {
+      super.setW(this.animation.get(0).width);
+      super.setH(this.animation.get(0).height);
+    }
     super.setLeft(x);
     super.setTop(y);
 
@@ -298,6 +300,8 @@ public class AnimatedSprite extends Sprite{
       ArrayList<PImage> ani = new ArrayList<PImage>();
       spriteData = Resource.loadJSONObject(p, jsonFile);
       spriteSheet = Resource.loadImage(png);
+      if (spriteData == null || spriteSheet == null) return ani;
+      
       JSONArray frames = spriteData.getJSONArray("frames");
       
       // System.out.println("Loading Animated Sprite... " + pngFile);

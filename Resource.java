@@ -19,6 +19,7 @@ public class Resource {
      * Loads an interactive 2D image sprite sheet or background from the JAR resources.
      */
     public static PImage loadImage(String path) {
+        if (path == null) return null;
         try {
             InputStream is = Resource.class.getClassLoader().getResourceAsStream(path);
             if (is == null) {
@@ -26,6 +27,10 @@ public class Resource {
                 return null;
             }
             BufferedImage bimg = ImageIO.read(is);
+            if (bimg == null) {
+                System.err.println("RESOURCE ERROR: Could not decode image at " + path);
+                return null;
+            }
             // Convert to a standard Processing PImage (with alpha/transparency channels)
             PImage img = new PImage(bimg.getWidth(), bimg.getHeight(), PApplet.ARGB);
             bimg.getRGB(0, 0, img.width, img.height, img.pixels, 0, img.width);
@@ -42,6 +47,7 @@ public class Resource {
      * Loads and registers a custom TrueType vector font (.ttf) from the JAR resources.
      */
     public static PFont loadFont(PApplet p, String fontPath, float size) {
+        if (fontPath == null) return p.createFont("SansSerif", size);
         try {
             InputStream is = Resource.class.getClassLoader().getResourceAsStream(fontPath);
             if (is == null) {
@@ -60,6 +66,7 @@ public class Resource {
      * Loads a structural JSON data sheet from the JAR resources (useful for physics or animation maps).
      */
     public static JSONObject loadJSONObject(PApplet p, String jsonPath) {
+        if (jsonPath == null) return null;
         InputStream is = Resource.class.getClassLoader().getResourceAsStream(jsonPath);
         if (is == null) {
             System.err.println("RESOURCE ERROR: JSON configuration map not found at " + jsonPath);

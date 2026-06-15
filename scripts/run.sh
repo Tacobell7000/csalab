@@ -1,6 +1,17 @@
 #!/bin/bash
 # 1. Point to the virtual window
-export DISPLAY=:1
+if [ -z "$DISPLAY" ]; then
+    export DISPLAY=:1
+fi
+
+# Ensure VNC is running if in a devcontainer/codespace environment
+if [ -f "/.dockerenv" ] || [ "$CODESPACES" = "true" ]; then
+    if ! pgrep -x "Xvfb" > /dev/null; then
+        echo "🌐 Starting virtual display (this may take a moment)..."
+        bash scripts/start-vnc.sh > /dev/null 2>&1 &
+        sleep 5
+    fi
+fi
 
 # 2. Force the script to run from the project root, even though it's in /scripts
 cd "$(dirname "$0")/.."

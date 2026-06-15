@@ -148,7 +148,9 @@ public class Sprite{
     if(!isAnimated){
       if( spriteImgFile != null){
         this.spriteImg = Resource.loadImage(spriteImgFile);
-        scale(scaleFactor);
+        if (this.spriteImg != null) {
+          scale(scaleFactor);
+        }
       } 
     }
   }
@@ -233,7 +235,7 @@ public class Sprite{
    * @return float
    */
   public float getSpeedY(){
-    return speedX;
+    return speedY;
   }
   
   /** 
