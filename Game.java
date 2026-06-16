@@ -361,7 +361,7 @@ public class Game extends PApplet {
   final int ENEMY_NORMAL = 0, ENEMY_FAST = 1, ENEMY_TANK = 2, ENEMY_SHIELDED = 3;
 
   class Enemy {
-    int hp = 5, maxHp = 5; boolean dead = false; int enemyType = ENEMY_NORMAL;
+    int hp = 1000, maxHp = 1000; boolean dead = false; int enemyType = ENEMY_NORMAL;
     boolean shieldActive = false; float px, py; int targetPathIndex = 1;
     int reward = 8; boolean isBoss = false; int pathIndex; float speedMult = 1.0f;
 
@@ -369,7 +369,7 @@ public class Game extends PApplet {
       this.enemyType = type; this.pathIndex = pathIdx;
       GridLocation start = enemyPaths.get(pathIdx).get(0);
       px = start.getCol() * tileW + tileW / 2f; py = start.getRow() * tileH + tileH / 2f;
-      if (type == ENEMY_FAST) { hp = 3; speedMult = 2.2f; reward = 3; }
+      if (type == ENEMY_FAST) { hp = 100; speedMult = 2.2f; reward = 3; }
       else if (type == ENEMY_TANK) { hp = 20; speedMult = 0.55f; reward = 10; }
       else if (type == ENEMY_SHIELDED) { hp = 10; shieldActive = true; speedMult = 0.85f; reward = 7; }
       else { hp = 6; speedMult = 1.0f; reward = 5; }
