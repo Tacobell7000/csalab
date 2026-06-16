@@ -66,6 +66,71 @@ public class Game extends PApplet {
 
   // ---------------- SETUP ---------------- //
 
+  // Pause & audio
+  boolean paused = false;
+  javax.sound.sampled.Clip bgMusic;
+  boolean bgMusicLoaded = false;
+
+  void loadBgMusicIfNeeded() {
+    if (bgMusicLoaded) return;
+    try {
+      java.io.File f = new java.io.File("sounds/Lenny_Kravitz_Fly_Away.mp3");
+      if (!f.exists()) {
+        System.out.println("BG music file not found: " + f.getAbsolutePath());
+        bgMusicLoaded = true; // don't retry every frame
+        return;
+      }
+      javax.sound.sampled.AudioInputStream ais = javax.sound.sampled.AudioSystem.getAudioInputStream(f);
+      bgMusic = javax.sound.sampled.AudioSystem.getClip();
+      bgMusic.open(ais);
+      bgMusicLoaded = true;
+    } catch (Exception e) {
+      System.out.println("Failed to load bg music: " + e);
+      bgMusicLoaded = true;
+      bgMusic = null;
+    }
+  }
+
+  void playBgMusic() {
+    loadBgMusicIfNeeded();
+    if (bgMusic == null) return;
+    try {
+      if (bgMusic.isRunning()) bgMusic.stop();
+      bgMusic.setFramePosition(0);
+      bgMusic.start();
+    } catch (Exception e) {
+      System.out.println("Failed to play bg music: " + e);
+    }
+  }
+
+  void pauseBgMusic() {
+    if (bgMusic == null) return;
+    try {
+      bgMusic.stop();
+    } catch (Exception e) {
+      System.out.println("Failed to pause bg music: " + e);
+    }
+  }
+
+  void resumeBgMusic() {
+    if (bgMusic == null) return;
+    try {
+      bgMusic.start();
+    } catch (Exception e) {
+      System.out.println("Failed to resume bg music: " + e);
+    }
+  }
+
+  void stopBgMusic() {
+    if (bgMusic == null) return;
+    try {
+      bgMusic.stop();
+      bgMusic.setFramePosition(0);
+    } catch (Exception e) {
+      System.out.println("Failed to stop bg music: " + e);
+    }
+  }
+
   public void settings() {
     size(APP_WIDTH, APP_HEIGHT, JAVA2D);
     p = this;
@@ -146,8 +211,10 @@ public class Game extends PApplet {
 
   void startGame() {
     System.out.println("STARTING GAME - switching to SCREEN_GAME");
+    paused = false;
     initGameData();
     screen = SCREEN_GAME;
+    playBgMusic();
   }
 
   // ---------------- MAP SYSTEM ---------------- //
@@ -245,11 +312,29 @@ public class Game extends PApplet {
       screen = SCREEN_START;
     }
     if (screen == SCREEN_START) { drawStartScreen(); return; }
+
+    // If paused, freeze gameplay but still render the scene + overlay
     background(grassColor);
     drawGrid();
-    if (!gameOver && !gameWon) {
-      handleGenerators(); spawnEnemies(); updateEnemies(); updateTowers(); handleHover();
+    drawPlacementPreview();
+    drawTowers();
+    drawEnemies();
+    drawProjectiles();
+    drawHUD();
+
+    if (paused) {
+      drawPauseScreen();
+      return;
     }
+
+    if (!gameOver && !gameWon) {
+      handleGenerators();
+      spawnEnemies();
+      updateEnemies();
+      updateTowers();
+      handleHover();
+    }
+
     drawPlacementPreview(); drawTowers(); drawEnemies(); drawProjectiles();
     drawHUD(); checkGameState();
   }
@@ -257,6 +342,9 @@ public class Game extends PApplet {
   // ---------------- START SCREEN ---------------- //
 
   void drawStartScreen() {
+    // Ensure pause/music state resets when we show the start screen
+    paused = false;
+    stopBgMusic();
     rectMode(CORNER);
     ellipseMode(CENTER);
     background(startBgColor);
@@ -691,6 +779,23 @@ public class Game extends PApplet {
   // ---------------- INPUT ---------------- //
 
   public void keyPressed() {
+    if (key == 'p' || key == 'P') {
+      if (screen == SCREEN_GAME && !(gameOver || gameWon)) {
+        paused = !paused;
+        if (paused) pauseBgMusic(); else resumeBgMusic();
+      }
+      return;
+    }
+
+    if (key == 'm' || key == 'M') {
+      if (paused) {
+        paused = false;
+        stopBgMusic();
+        screen = SCREEN_START;
+      }
+      return;
+    }
+
     if (key == '1') selectedTowerType = TYPE_BASIC; else if (key == '2') selectedTowerType = TYPE_SPLASH;
     else if (key == '3') selectedTowerType = TYPE_SNIPER; else if (key == '4') selectedTowerType = TYPE_GENERATOR;
   }
@@ -718,10 +823,33 @@ public class Game extends PApplet {
   // ---------------- GAME STATE ---------------- //
 
   void checkGameState() {
-    if (lives <= 0 && !gameOver) gameOver = true;
-    if (currentWave >= waves.size() && enemies.isEmpty() && lives > 0 && !gameWon && !gameOver) gameWon = true;
+    if (lives <= 0 && !gameOver) { gameOver = true; stopBgMusic(); paused = false; }
+    if (currentWave >= waves.size() && enemies.isEmpty() && lives > 0 && !gameWon && !gameOver) { gameWon = true; stopBgMusic(); paused = false; }
     if (gameOver) { drawEndScreen("GAME OVER", color(255, 60, 60), "You lost all your lives!"); drawReplayButton(); }
     else if (gameWon) { drawEndScreen("VICTORY!", color(80, 255, 80), "Final Score: $" + money); drawReplayButton(); }
+  }
+
+  void drawPauseScreen() {
+    fill(0, 0, 0, 170);
+    noStroke();
+    rect(0, 0, APP_WIDTH, APP_HEIGHT);
+
+    // Panel
+    fill(10, 15, 35, 230);
+    stroke(255, 220, 0, 80);
+    strokeWeight(2);
+    noFill();
+    rect(220, 160, APP_WIDTH - 440, 320, 16);
+
+    fill(255, 220, 0);
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(48);
+    text("PAUSED", APP_WIDTH / 2, 260);
+
+    fill(220);
+    textSize(16);
+    text("Press P to resume\nPress M to go back to Start", APP_WIDTH / 2, 320);
   }
 
   void drawEndScreen(String title, int titleColor, String subtitle) {
